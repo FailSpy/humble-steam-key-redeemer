@@ -5,7 +5,7 @@ This is a script I hacked together to login to Humble and Steam, automating the 
 
 It will extract _all_ keys available for Steam from Humble, and check if any of the keys are already owned by the logged-in Steam user. Of those that aren't, attempt to redeem them on Steam.
 
-This is dependent on (ValvePython/steam)[https://github.com/ValvePython/steam]  
+This is dependent on [ValvePython/steam](https://github.com/ValvePython/steam)  
 Install it with `pip install steam`
 
 Tested with Python 3.7.9
