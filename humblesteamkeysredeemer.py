@@ -1,31 +1,80 @@
 import requests
 import json
-import string
+from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import re
 import time
-
-# TODO save state, and do so securely -- cookies, confirmed redeemed keys, etc
+import pickle
 
 # Humble endpoints
-loginpage = "https://www.humblebundle.com/login"
-loginurl = "https://www.humblebundle.com/processlogin"
-redeemurl = "https://www.humblebundle.com/humbler/redeemkey"
+humble_login_page = "https://www.humblebundle.com/login"
+humble_keys_page = "https://www.humblebundle.com/home/library"
+
+humble_login_api = "https://www.humblebundle.com/processlogin"
+humble_redeem_api = "https://www.humblebundle.com/humbler/redeemkey"
+humble_orders_api = "https://www.humblebundle.com/api/v1/user/order"
+humble_order_details_api = "https://www.humblebundle.com/api/v1/order/"
+
+# Steam endpoints
+steam_keys_page = "https://store.steampowered.com/account/registerkey"
+steam_userdata_api = "https://store.steampowered.com/dynamicstore/userdata/"
+steam_redeem_api = "https://store.steampowered.com/account/ajaxregisterkey/"
+steam_appslist_api = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 
 # May actually be able to do without these, but for now they're in.
 usefulheaders = {"Content-Type":"application/x-www-form-urlencoded", "Accept": "application/json, text/javascript, */*; q=0.01"}
 
-def login(session):
+def valid_steam_key(key):
+    # Steam keys are in the format of AAAAA-BBBBB-CCCCC
+    if not isinstance(key,str):
+        return False
+    validkeypart = lambda part: len(part) == 5
+    keyparts = key.split('-')
+    return len(key) == 17 and len(keyparts) == 3 and all([validkeypart(part) for part in keyparts])
+
+def try_recover_cookies(cookiefile,session):
+    try:
+        with open(cookiefile,'rb') as f:
+            session.cookies.update(pickle.load(f))
+        return True
+    except:
+        return False
+    
+def export_cookies(cookiefile,session):
+    try:
+        with open(cookiefile,'wb') as f:
+            pickle.dump(session.cookies,f)
+        return True
+    except:
+        return False
+
+def verify_logins_session(session):
+    # Returns [humble_status, steam_status]
+    loggedin = []
+    for url in [humble_keys_page,steam_keys_page]:
+        r = session.get(url,allow_redirects=False)
+        loggedin.append(r.status_code != 301 and r.status_code != 302)
+    return loggedin
+
+def humble_login(session):
+    # Attempt to use saved session
+    if(try_recover_cookies('.humblecookies',session) and verify_logins_session(session)[0]):
+        usefulheaders["CSRF-Prevention-Token"] = session.cookies['csrf_cookie']
+        return True
+    else:
+        session.cookies.clear()
+    
+    # Saved session didn't work
     authorized = False
     while authorized == False:
         username = input("Email:")
         password = input("Password:")
-        csrfreq = session.get(loginpage)
+        csrfreq = session.get(humble_login_page)
 
         payload={"access_token":"","access_token_provider_id":"","goto":"/","qs":"","username":username,"password":password}
         usefulheaders["CSRF-Prevention-Token"] = csrfreq.cookies['csrf_cookie']
 
-        r = session.post(loginurl,data=payload,headers=usefulheaders)
+        r = session.post(humble_login_api,data=payload,headers=usefulheaders)
         loginjson = r.json()
         if("errors" in loginjson):
             print(loginjson['errors'])
@@ -37,7 +86,7 @@ def login(session):
                 if("humble_guard_required" in loginjson):
                     humble_guard_code = input("Please enter the Humble security code: ")
                     payload['guard'] = humble_guard_code.upper() # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
-                    auth = session.post(loginurl,data=payload,headers=usefulheaders)
+                    auth = session.post(humble_login_api,data=payload,headers=usefulheaders)
                     authjson = auth.json()
                     
                     if('user_terms_opt_in_data' in authjson and authjson['user_terms_opt_in_data']['needs_to_opt_in']):
@@ -50,24 +99,40 @@ def login(session):
                     print("Sorry, your two-factor isn't supported yet.")
                     exit()
 
+            export_cookies('.humblecookies',session)
             return True
+
+def steam_login():
+    # Sign into Steam web
+    
+    # Attempt to use saved session
+    r = requests.Session()
+    if(try_recover_cookies('.steamcookies',r) and verify_logins_session(r)[1]):
+        return r
+    
+    # Saved state doesn't work, prompt user to sign in.
+    s_username = input("Steam Username:")
+    user = wa.WebAuth(s_username)
+    session = user.cli_login()
+    export_cookies('.steamcookies',session)
+    return session
 
 def redeem_humble_key(sess,tpk):
     # Keys need to be 'redeemed' on Humble first before the Humble API gives the user a Steam key.
     # This triggers that for a given Humble key entry
     payload = {'keytype': tpk['machine_name'],'key':tpk['gamekey'],'keyindex':tpk['keyindex']}
-    resp = sess.post(redeemurl,data=payload,headers=usefulheaders)
+    resp = sess.post(humble_redeem_api,data=payload,headers=usefulheaders)
     if(resp.status_code != 200 or not resp.json()['success']):
         print("Error redeeming key on Humble Bundle for " + tpk['human_name'])
         return ""
     return resp.json()['key']
 
-def _redeem_steam(session,key):
+def _redeem_steam(session,key,quiet=False):
     # Based on https://gist.github.com/snipplets/2156576c2754f8a4c9b43ccb674d5a5d
     if key == "":
         return 0
     sessionID = session.cookies.get_dict()["sessionid"]
-    r = session.post('https://store.steampowered.com/account/ajaxregisterkey/',data={'product_key':key,'sessionid':sessionID})
+    r = session.post(steam_redeem_api,data={'product_key':key,'sessionid':sessionID})
     blob = r.json()
 
     if blob["success"] == 1:
@@ -95,65 +160,106 @@ def _redeem_steam(session,key):
             sErrorMessage = 'The code you have entered is from a Steam Gift Card or Steam Wallet Code. Browse here: https://store.steampowered.com/account/redeemwalletcode to redeem it.'
         else:
             sErrorMessage = 'An unexpected error has occurred.  Your product code has not been redeemed.  Please wait 30 minutes and try redeeming the code again.  If the problem persists, please contact <a href="https://help.steampowered.com/en/wizard/HelpWithCDKey">Steam Support</a> for further assistance.'
-        
-        print(sErrorMessage)
+        if(errorCode != 53 or not quiet):
+            # 
+            print(sErrorMessage)
         return errorCode
 
+files = {}
+
+def write_key(code,key):
+    global files
+    
+    filename = "redeemed.csv"
+    if code == 15 or code == 9:
+        filename = "already_owned.csv"
+    elif code != 0:
+        filename = "errored.csv"
+    
+    if filename not in files:
+        files[filename] = open(filename,'a')
+    key['human_name'] = key['human_name'].replace(',','.')
+    output = "{gamekey},{human_name},{redeemed_key_val}\n".format(**key)
+    files[filename].write(output)
+    files[filename].flush()
+
 def redeem_steam_keys(humble_session,humble_keys):
-    # Sign into Steam web
-    s_username = input("Steam Username:")
-    user = wa.WebAuth(s_username)
-    session = user.cli_login()
+    session = steam_login()
 
-    print("Signed in. Getting your owned content to avoid attempting to register keys already owned...")
-
+    print("Successfully signed in on Steam.")
+    print("Getting your owned content to avoid attempting to register keys already owned...")
+    
     # Query owned App IDs according to Steam
-    ownedcontent = session.get("https://store.steampowered.com/dynamicstore/userdata/").json()
-    ownedgames = ownedcontent['rgOwnedPackages'] + ownedcontent['rgOwnedApps']
+    ownedcontent = session.get(steam_userdata_api).json()
+    ownedappids = ownedcontent['rgOwnedPackages'] + ownedcontent['rgOwnedApps']
+    fullappslist = {app['name']:app['appid'] for app in session.get(steam_appslist_api).json()['applist']['apps']}
 
-    # Some Steam keys come back with no Steam AppID from HB
+    # Some Steam keys come back with no Steam AppID from Humble
     # So we do our best to look up from AppIDs (no packages, because can't find an API for it)
-    pattern = re.compile('[\W_]+')
-    steam_app_list = {pattern.sub('',app['name']).lower():app['appid'] for app in session.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/").json()['applist']['apps']}
+    threshold = 78
     for idx, game in enumerate(humble_keys):
-        if game['steam_app_id'] == None:
-            human_name = pattern.sub('',game['human_name'].lower())
-            if(human_name in steam_app_list):
-                humble_keys[idx]['steam_app_id'] = steam_app_list[human_name]
+        # Do a string search based on product names.
+        potentials = [appname for appname,appid in fullappslist.items() if game['human_name'][0:5] == appname[0:5]]
+        matches = [(fuzz.token_sort_ratio(gamename,game['human_name']),fullappslist[gamename]) for gamename in potentials]
+        if(len(matches) > 1):
+            best_match = max(matches,key=lambda item:item[0])
+        elif(len(matches) == 1):
+            best_match = matches[0]
+        else:
+            best_match = (0,None)
+        if best_match[0] > threshold and best_match[1] != None:
+            humble_keys[idx]['steam_app_id'] = best_match[1]
+
+    # TODO: Prompt user how they want to handle undetermined games
 
     # This is filtering out any keys that don't end up with a steam AppID because it suited me more
-    # Will want to prompt the user to ask them most likely
-    unownedgames = [key for key in humble_keys if key['steam_app_id'] != None and key['steam_app_id'] not in ownedgames]
+    unownedgames = [key for key in humble_keys if key['steam_app_id'] not in ownedappids]
     undeterminedgames = [key for key in humble_keys if key['steam_app_id'] == None]
 
-    #ownedgames = [key for key in humble_keys if key not in unownedgames]
-
-    print("Filtered out game keys that is certified you already own on Steam; {unowned} keys unowned, and {undetermined} couldn't be determined to a Steam AppID".format(unowned=len(unownedgames),undetermined=len(undeterminedgames)))
+    print("Filtered out game keys that you already own on Steam; {unowned} keys unowned, and {undetermined} couldn't be determined to a Steam AppID".format(unowned=len(unownedgames),undetermined=len(undeterminedgames)))
 
     for key in unownedgames:
         print(key['human_name'])
-        redeemed_key = ""
+
         if('redeemed_key_val' not in key):
             # This key is unredeemed via Humble, trigger redemption process.
             redeemed_key = redeem_humble_key(humble_session,key)
-        else:
-            redeemed_key = key['redeemed_key_val']
-        while _redeem_steam(session,redeemed_key) == 53:
+            key['redeemed_key_val'] = redeemed_key # Worth noting this will only persist for this loop -- does not get saved to unownedgames' obj
+        
+        if(not valid_steam_key(key['redeemed_key_val'])):
+            # Most likely humble gift link
+            write_key(1,key)
+            continue
+
+        code = _redeem_steam(session,key['redeemed_key_val'])
+        animation = "|/-\\"
+        seconds = 0
+        while code == 53:
+            ### NOTE
             # Steam seems to limit to about 50 keys/hr -- even if all 50 keys are legitimate *sigh*
-            # Duplication counts towards Steam's rate limit, hence why we've worked so hard above to figure out what we already own
-            print("Waiting an hour for rate limit to go away...")
-            time.sleep(60*60)
+            # Even worse: 10 *failed* keys/hr 
+            # Duplication counts towards Steam's _failure rate limit_, hence why we've worked so hard above to figure out what we already own
+            ###
+            curanim = animation[seconds % len(animation)]
+            print("Waiting for rate limit to go away (takes an hour after first key insert) " + curanim,end='\r')
+            time.sleep(1)
+            seconds = seconds + 1
+            if(seconds % 60 == 0):
+                # Try again every 60 seconds
+                code = _redeem_steam(session,key['redeemed_key_val'],quiet=True)
+        
+        write_key(code,key)
 
 # Create a consistent session for Humble API use
-session = requests.Session()
-login(session)
-print("Successfully logged in.")
+humble_session = requests.Session()
+humble_login(humble_session)
+print("Successfully signed in on Humble.")
 
-orders = session.get("https://www.humblebundle.com/api/v1/user/order").json()
+orders = humble_session.get(humble_orders_api).json()
 print("Getting {} order details, please wait".format(len(orders)))
 
 # TODO: multithread this
-order_details = [session.get("https://www.humblebundle.com/api/v1/order/" + order['gamekey'] + "?all_tpkds=true").json() for order in orders]
+order_details = [humble_session.get(f"{humble_order_details_api}{order['gamekey']}?all_tpkds=true").json() for order in orders]
 
 unredeemed_keys = []
 redeemed_keys = []
@@ -171,6 +277,23 @@ for key in steam_keys:
 
 print("{keycnt} Steam keys -- {redeemedcnt} redeemed, {unredeemedcnt} unredeemed".format(keycnt=len(steam_keys),redeemedcnt=len(redeemed_keys),unredeemedcnt=len(unredeemed_keys)))
 
+filters = ['errored.csv','already_owned.csv','redeemed.csv']
+original_length = len(steam_keys)
+for filterfile in filters:
+    try:
+        with open(filterfile,'r') as f:
+            keycols = f.read()
+        filtered_keys = [keycol for keycol in keycols.replace('\n',',').split(',')]
+        steam_keys = [key for key in steam_keys if key['gamekey'] not in filtered_keys]
+    except:
+        pass
+if(len(steam_keys) != original_length):
+    print('Filtered {} keys from previous runs'.format(original_length-len(steam_keys)))
+
 # TODO: Prompt the user for their preferences on redeeming on Steam all keys or subsets(redeemed, unredeemed, ambiguous, etc)
 
-redeem_steam_keys(session,steam_keys)
+redeem_steam_keys(humble_session,steam_keys)
+
+# Cleanup
+for f in files:
+    f.close()
