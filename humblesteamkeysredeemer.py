@@ -3,6 +3,7 @@ from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import time
 import pickle
+import getpass
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
@@ -80,8 +81,8 @@ def humble_login(session):
     # Saved session didn't work
     authorized = False
     while not authorized:
-        username = input("Humble bundle email:")
-        password = input("Password:")
+        username = input("Humble bundle email: ")
+        password = getpass.getpass("Password: ")
         csrf_req = session.get(HUMBLE_LOGIN_PAGE)
 
         payload = {
@@ -141,7 +142,7 @@ def steam_login():
         return r
 
     # Saved state doesn't work, prompt user to sign in.
-    s_username = input("Steam Username:")
+    s_username = input("Steam Username: ")
     user = wa.WebAuth(s_username)
     session = user.cli_login()
     export_cookies(".steamcookies", session)
