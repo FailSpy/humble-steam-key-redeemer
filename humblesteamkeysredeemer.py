@@ -124,9 +124,9 @@ def humble_login(session):
                         exit()
                     if auth.status_code == 200:
                         two_factored = True
-                elif auth.status_code == 401:
-                    print("Sorry, your two-factor isn't supported yet.")
-                    exit()
+                    elif auth.status_code == 401:
+                        print("Sorry, your two-factor isn't supported yet.")
+                        exit()
 
             export_cookies(".humblecookies", session)
             return True
