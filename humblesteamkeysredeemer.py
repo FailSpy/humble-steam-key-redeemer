@@ -1,8 +1,6 @@
 import requests
-import json
 from fuzzywuzzy import fuzz
 import steam.webauth as wa
-import re
 import time
 import pickle
 
@@ -183,6 +181,25 @@ def write_key(code,key):
     files[filename].write(output)
     files[filename].flush()
 
+def prompt_skipped(skippedgames):
+    user_filtered = []
+    with open('skipped.txt','w') as f:
+        for game in skippedgames.keys():
+            f.write(game + "\n")
+
+    print("Inside skipped.txt is a list of {skipped} games that we think you already own, but aren't completely sure".format(skipped=len(skippedgames)))
+    try:
+        input("Feel free to REMOVE from that list any games that you would like to try anyways, and when done press Enter to confirm.")
+    except SyntaxError:
+        pass
+
+    with open('skipped.txt','r') as f:
+        user_filtered = [line.strip() for line in f]
+    
+    # Choose only the games that appear to be missing from user's skipped.txt file
+    user_requested = [skipgame for skipname,skipgame in skippedgames.items() if skipname not in user_filtered]
+    return user_requested
+
 def redeem_steam_keys(humble_session,humble_keys):
     session = steam_login()
 
@@ -192,31 +209,36 @@ def redeem_steam_keys(humble_session,humble_keys):
     # Query owned App IDs according to Steam
     ownedcontent = session.get(steam_userdata_api).json()
     ownedappids = ownedcontent['rgOwnedPackages'] + ownedcontent['rgOwnedApps']
-    fullappslist = {app['name']:app['appid'] for app in session.get(steam_appslist_api).json()['applist']['apps']}
+    ownedappdetails = {app['appid']:app['name'] for app in session.get(steam_appslist_api).json()['applist']['apps'] if app['appid'] in ownedappids}
+
+    notedkeys = [key for key in humble_keys if key['steam_app_id'] not in ownedappids]
+    skippedgames = {}
+    unownedgames = []
 
     # Some Steam keys come back with no Steam AppID from Humble
     # So we do our best to look up from AppIDs (no packages, because can't find an API for it)
-    threshold = 78
-    for idx, game in enumerate(humble_keys):
+    threshold = 70
+    for game in notedkeys:
+        best_match = (None,None)
         # Do a string search based on product names.
-        potentials = [appname for appname,appid in fullappslist.items() if game['human_name'][0:5] == appname[0:5]]
-        matches = [(fuzz.token_sort_ratio(gamename,game['human_name']),fullappslist[gamename]) for gamename in potentials]
+        matches = [(fuzz.token_set_ratio(appname,game['human_name']),appid) for appid,appname in ownedappdetails.items()]
         if(len(matches) > 1):
-            best_match = max(matches,key=lambda item:item[0])
+            matches = [(fuzz.token_sort_ratio(ownedappdetails[appid],game['human_name']),appid) for score,appid in matches if score > threshold]
+            if(len(matches) > 0):
+                best_match = max(matches,key=lambda item:item[0])
         elif(len(matches) == 1):
             best_match = matches[0]
+        if best_match[1] != None and best_match[1] in ownedappids:
+            skippedgames[game['human_name'].strip()] = game
         else:
-            best_match = (0,None)
-        if best_match[0] > threshold and best_match[1] != None:
-            humble_keys[idx]['steam_app_id'] = best_match[1]
+            unownedgames.append(game)
 
-    # TODO: Prompt user how they want to handle undetermined games
+    print("Filtered out game keys that you already own on Steam; {} keys unowned.".format(len(unownedgames)))
 
-    # This is filtering out any keys that don't end up with a steam AppID because it suited me more
-    unownedgames = [key for key in humble_keys if key['steam_app_id'] not in ownedappids]
-    undeterminedgames = [key for key in humble_keys if key['steam_app_id'] == None]
-
-    print("Filtered out game keys that you already own on Steam; {unowned} keys unowned, and {undetermined} couldn't be determined to a Steam AppID".format(unowned=len(unownedgames),undetermined=len(undeterminedgames)))
+    if len(skippedgames):
+        # Skipped games uncertain to be owned by user. Let user choose
+        unownedgames = unownedgames + prompt_skipped(skippedgames)
+        print("{} keys will be attempted.".format(len(unownedgames)))
 
     for key in unownedgames:
         print(key['human_name'])
@@ -268,15 +290,6 @@ for game in order_details:
     if 'tpkd_dict' in game and 'all_tpks' in game['tpkd_dict']:
         steam_keys.extend([tpk for tpk in game['tpkd_dict']['all_tpks'] if tpk['key_type_human_name'] == 'Steam'])
 
-for key in steam_keys:
-    if 'redeemed_key_val' in key:
-        redeemed_keys.append(key)
-    else:
-        # Has not been redeemed via Humble yet
-        unredeemed_keys.append(key)
-
-print("{keycnt} Steam keys -- {redeemedcnt} redeemed, {unredeemedcnt} unredeemed".format(keycnt=len(steam_keys),redeemedcnt=len(redeemed_keys),unredeemedcnt=len(unredeemed_keys)))
-
 filters = ['errored.csv','already_owned.csv','redeemed.csv']
 original_length = len(steam_keys)
 for filterfile in filters:
@@ -289,6 +302,16 @@ for filterfile in filters:
         pass
 if(len(steam_keys) != original_length):
     print('Filtered {} keys from previous runs'.format(original_length-len(steam_keys)))
+
+for key in steam_keys:
+    if 'redeemed_key_val' in key:
+        redeemed_keys.append(key)
+    else:
+        # Has not been redeemed via Humble yet
+        unredeemed_keys.append(key)
+
+print("{keycnt} Steam keys -- {redeemedcnt} redeemed, {unredeemedcnt} unredeemed".format(keycnt=len(steam_keys),redeemedcnt=len(redeemed_keys),unredeemedcnt=len(unredeemed_keys)))
+
 
 # TODO: Prompt the user for their preferences on redeeming on Steam all keys or subsets(redeemed, unredeemed, ambiguous, etc)
 
