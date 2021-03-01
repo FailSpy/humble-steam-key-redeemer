@@ -97,40 +97,48 @@ def humble_login(session):
 
         r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
         login_json = r.json()
-        if "errors" in login_json:
-            print(login_json["errors"])
-            exit()
-        else:
-            two_factored = False
-            while not two_factored:
-                # There may be differences for Humble's SMS 2FA, haven't tested.
-                if "humble_guard_required" in login_json:
-                    humble_guard_code = input("Please enter the Humble security code: ")
-                    payload[
-                        "guard"
-                    ] = (
-                        humble_guard_code.upper()
-                    )  # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
-                    auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
-                    auth_json = auth.json()
 
-                    if (
-                        "user_terms_opt_in_data" in auth_json
-                        and auth_json["user_terms_opt_in_data"]["needs_to_opt_in"]
-                    ):
-                        # Nope, not messing with this.
-                        print(
-                            "There's been an update to the TOS, please sign in to Humble on your browser."
-                        )
-                        exit()
-                    if auth.status_code == 200:
-                        two_factored = True
-                    elif auth.status_code == 401:
-                        print("Sorry, your two-factor isn't supported yet.")
-                        exit()
+        while True:
+            # There may be differences for Humble's SMS 2FA, haven't tested.
+            if "humble_guard_required" in login_json:
+                humble_guard_code = input("Please enter the Humble security code: ")
+                payload["guard"] = humble_guard_code.upper()
+                # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
+                auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
+                auth_json = auth.json()
 
-            export_cookies(".humblecookies", session)
-            return True
+                if (
+                    "user_terms_opt_in_data" in auth_json
+                    and auth_json["user_terms_opt_in_data"]["needs_to_opt_in"]
+                ):
+                    # Nope, not messing with this.
+                    print(
+                        "There's been an update to the TOS, please sign in to Humble on your browser."
+                    )
+                    exit()
+                if auth.status_code == 200:
+                    break
+                elif auth.status_code == 401:
+                    print("Sorry, your two-factor isn't supported yet.")
+                    exit()
+
+            if "errors" in login_json:
+                if "authy-input" in login_json["errors"]:
+                    code = input("Please enter 2FA code: ")
+                    payload["code"] = code
+                    r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
+                    login_json = r.json()
+                    if "errors" in login_json:
+                        print(login_json["errors"])
+                        exit()
+                    else:
+                        break
+                else:
+                    print(login_json["errors"])
+                    exit()
+
+        export_cookies(".humblecookies", session)
+        return True
 
 
 def steam_login():
