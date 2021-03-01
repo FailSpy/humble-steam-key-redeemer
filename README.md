@@ -7,6 +7,10 @@ This script will login to both Humble and Steam, automating the whole process. I
 
 It will extract _all_ keys available for Steam from Humble, and check if any of the keys are already owned by the logged-in Steam user. Of those that aren't, attempt to redeem them on Steam. This is done because Steam has some pretty harsh rate limiting on key redemption -- 50 keys/hr, or 10 failed keys/hr, whichever comes first.
 
+### Notes
+
+To remove an already added account, delete the associated `.(humble|steam)cookies` file.
+
 ### Dependencies
 
 - `steam`: [ValvePython/steam](https://github.com/ValvePython/steam)  
