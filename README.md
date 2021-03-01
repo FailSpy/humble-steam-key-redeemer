@@ -5,7 +5,13 @@ This is a script I hacked together to login to Humble and Steam, automating the 
 
 It will extract _all_ keys available for Steam from Humble, and check if any of the keys are already owned by the logged-in Steam user. Of those that aren't, attempt to redeem them on Steam.
 
-This is dependent on [ValvePython/steam](https://github.com/ValvePython/steam) as well as [seatgeek/fuzzywuzzy](https://github.com/seatgeek/fuzzywuzzy)  
-Install them with `pip install steam fuzzywuzzy`
+### Dependencies
+
+- `steam`: [ValvePython/steam](https://github.com/ValvePython/steam)  
+- `fuzzywuzzy`: [seatgeek/fuzzywuzzy](https://github.com/seatgeek/fuzzywuzzy)  
+- `requests`: [requests](https://requests.readthedocs.io/en/master/)  
+- `python-Levenshtein`: [ztane/python-Levenshtein](https://github.com/ztane/python-Levenshtein) **OPTIONAL**  
+
+Install them all with `pip install steam fuzzywuzzy requests python-Levenshtein`
 
 Tested with Python 3.7.9
