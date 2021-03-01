@@ -83,7 +83,7 @@ def humble_login(session):
     while not authorized:
         username = input("Humble bundle email: ")
         password = getpass.getpass("Password: ")
-        csr_freq = session.get(HUMBLE_LOGIN_PAGE)
+        csrf_req = session.get(HUMBLE_LOGIN_PAGE)
 
         payload = {
             "access_token": "",
@@ -93,7 +93,7 @@ def humble_login(session):
             "username": username,
             "password": password,
         }
-        headers["CSRF-Prevention-Token"] = csr_freq.cookies["csrf_cookie"]
+        headers["CSRF-Prevention-Token"] = csrf_req.cookies["csrf_cookie"]
 
         r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
         login_json = r.json()
