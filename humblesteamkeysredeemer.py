@@ -5,49 +5,56 @@ import time
 import pickle
 
 # Humble endpoints
-humble_login_page = "https://www.humblebundle.com/login"
-humble_keys_page = "https://www.humblebundle.com/home/library"
+HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
+HUMBLE_KEYS_PAGE = "https://www.humblebundle.com/home/library"
 
-humble_login_api = "https://www.humblebundle.com/processlogin"
-humble_redeem_api = "https://www.humblebundle.com/humbler/redeemkey"
-humble_orders_api = "https://www.humblebundle.com/api/v1/user/order"
-humble_order_details_api = "https://www.humblebundle.com/api/v1/order/"
+HUMBLE_LOGIN_API = "https://www.humblebundle.com/processlogin"
+HUMBLE_REDEEM_API = "https://www.humblebundle.com/humbler/redeemkey"
+HUMBLE_ORDERS_API = "https://www.humblebundle.com/api/v1/user/order"
+HUMBLE_ORDER_DETAILS_API = "https://www.humblebundle.com/api/v1/order/"
 
 # Steam endpoints
-steam_keys_page = "https://store.steampowered.com/account/registerkey"
-steam_userdata_api = "https://store.steampowered.com/dynamicstore/userdata/"
-steam_redeem_api = "https://store.steampowered.com/account/ajaxregisterkey/"
-steam_appslist_api = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
+STEAM_KEYS_PAGE = "https://store.steampowered.com/account/registerkey"
+STEAM_USERDATA_API = "https://store.steampowered.com/dynamicstore/userdata/"
+STEAM_REDEEM_API = "https://store.steampowered.com/account/ajaxregisterkey/"
+STEAM_APP_LIST_API = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 
 # May actually be able to do without these, but for now they're in.
-usefulheaders = {
+headers = {
     "Content-Type": "application/x-www-form-urlencoded",
     "Accept": "application/json, text/javascript, */*; q=0.01",
 }
+
+
+def validate_key_part(part):
+    return len(part) == 5
 
 
 def valid_steam_key(key):
     # Steam keys are in the format of AAAAA-BBBBB-CCCCC
     if not isinstance(key, str):
         return False
-    validkeypart = lambda part: len(part) == 5
-    keyparts = key.split("-")
-    return len(key) == 17 and len(keyparts) == 3 and all([validkeypart(part) for part in keyparts])
+    key_parts = key.split("-")
+    return (
+        len(key) == 17
+        and len(key_parts) == 3
+        and all([validate_key_part(part) for part in key_parts])
+    )
 
 
-def try_recover_cookies(cookiefile, session):
+def try_recover_cookies(cookie_file, session):
     try:
-        with open(cookiefile, "rb") as f:
-            session.cookies.update(pickle.load(f))
+        with open(cookie_file, "rb") as file:
+            session.cookies.update(pickle.load(file))
         return True
     except:
         return False
 
 
-def export_cookies(cookiefile, session):
+def export_cookies(cookie_file, session):
     try:
-        with open(cookiefile, "wb") as f:
-            pickle.dump(session.cookies, f)
+        with open(cookie_file, "wb") as file:
+            pickle.dump(session.cookies, file)
         return True
     except:
         return False
@@ -56,7 +63,7 @@ def export_cookies(cookiefile, session):
 def verify_logins_session(session):
     # Returns [humble_status, steam_status]
     loggedin = []
-    for url in [humble_keys_page, steam_keys_page]:
+    for url in [HUMBLE_KEYS_PAGE, STEAM_KEYS_PAGE]:
         r = session.get(url, allow_redirects=False)
         loggedin.append(r.status_code != 301 and r.status_code != 302)
     return loggedin
@@ -65,17 +72,17 @@ def verify_logins_session(session):
 def humble_login(session):
     # Attempt to use saved session
     if try_recover_cookies(".humblecookies", session) and verify_logins_session(session)[0]:
-        usefulheaders["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
+        headers["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
         return True
     else:
         session.cookies.clear()
 
     # Saved session didn't work
     authorized = False
-    while authorized == False:
+    while not authorized:
         username = input("Email:")
         password = input("Password:")
-        csrfreq = session.get(humble_login_page)
+        csr_freq = session.get(HUMBLE_LOGIN_PAGE)
 
         payload = {
             "access_token": "",
@@ -85,30 +92,30 @@ def humble_login(session):
             "username": username,
             "password": password,
         }
-        usefulheaders["CSRF-Prevention-Token"] = csrfreq.cookies["csrf_cookie"]
+        headers["CSRF-Prevention-Token"] = csr_freq.cookies["csrf_cookie"]
 
-        r = session.post(humble_login_api, data=payload, headers=usefulheaders)
-        loginjson = r.json()
-        if "errors" in loginjson:
-            print(loginjson["errors"])
+        r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
+        login_json = r.json()
+        if "errors" in login_json:
+            print(login_json["errors"])
             exit()
         else:
-            twofactored = False
-            while not twofactored:
+            two_factored = False
+            while not two_factored:
                 # There may be differences for Humble's SMS 2FA, haven't tested.
-                if "humble_guard_required" in loginjson:
+                if "humble_guard_required" in login_json:
                     humble_guard_code = input("Please enter the Humble security code: ")
                     payload[
                         "guard"
                     ] = (
                         humble_guard_code.upper()
                     )  # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
-                    auth = session.post(humble_login_api, data=payload, headers=usefulheaders)
-                    authjson = auth.json()
+                    auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
+                    auth_json = auth.json()
 
                     if (
-                        "user_terms_opt_in_data" in authjson
-                        and authjson["user_terms_opt_in_data"]["needs_to_opt_in"]
+                        "user_terms_opt_in_data" in auth_json
+                        and auth_json["user_terms_opt_in_data"]["needs_to_opt_in"]
                     ):
                         # Nope, not messing with this.
                         print(
@@ -116,7 +123,7 @@ def humble_login(session):
                         )
                         exit()
                     if auth.status_code == 200:
-                        twofactored = True
+                        two_factored = True
                 elif auth.status_code == 401:
                     print("Sorry, your two-factor isn't supported yet.")
                     exit()
@@ -145,7 +152,7 @@ def redeem_humble_key(sess, tpk):
     # Keys need to be 'redeemed' on Humble first before the Humble API gives the user a Steam key.
     # This triggers that for a given Humble key entry
     payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
-    resp = sess.post(humble_redeem_api, data=payload, headers=usefulheaders)
+    resp = sess.post(HUMBLE_REDEEM_API, data=payload, headers=headers)
     if resp.status_code != 200 or not resp.json()["success"]:
         print("Error redeeming key on Humble Bundle for " + tpk["human_name"])
         return ""
@@ -156,8 +163,8 @@ def _redeem_steam(session, key, quiet=False):
     # Based on https://gist.github.com/snipplets/2156576c2754f8a4c9b43ccb674d5a5d
     if key == "":
         return 0
-    sessionID = session.cookies.get_dict()["sessionid"]
-    r = session.post(steam_redeem_api, data={"product_key": key, "sessionid": sessionID})
+    session_id = session.cookies.get_dict()["sessionid"]
+    r = session.post(STEAM_REDEEM_API, data={"product_key": key, "sessionid": session_id})
     blob = r.json()
 
     if blob["success"] == 1:
@@ -165,30 +172,62 @@ def _redeem_steam(session, key, quiet=False):
             print("Redeemed " + item["line_item_description"])
         return 0
     else:
-        errorCode = blob["purchase_result_details"]
-        sErrorMessage = ""
-        if errorCode == 14:
-            sErrorMessage = "The product code you've entered is not valid. Please double check to see if you've mistyped your key. I, L, and 1 can look alike, as can V and Y, and 0 and O."
-        elif errorCode == 15:
-            sErrorMessage = "The product code you've entered has already been activated by a different Steam account. This code cannot be used again. Please contact the retailer or online seller where the code was purchased for assistance."
-        elif errorCode == 53:
-            sErrorMessage = "There have been too many recent activation attempts from this account or Internet address. Please wait and try your product code again later."
-        elif errorCode == 13:
-            sErrorMessage = "Sorry, but this product is not available for purchase in this country. Your product key has not been redeemed."
-        elif errorCode == 9:
-            sErrorMessage = "This Steam account already owns the product(s) contained in this offer. To access them, visit your library in the Steam client."
-        elif errorCode == 24:
-            sErrorMessage = "The product code you've entered requires ownership of another product before activation.\n\nIf you are trying to activate an expansion pack or downloadable content, please first activate the original game, then activate this additional content."
-        elif errorCode == 36:
-            sErrorMessage = "The product code you have entered requires that you first play this game on the PlayStation®3 system before it can be registered.\n\nPlease:\n\n- Start this game on your PlayStation®3 system\n\n- Link your Steam account to your PlayStation®3 Network account\n\n- Connect to Steam while playing this game on the PlayStation®3 system\n\n- Register this product code through Steam."
-        elif errorCode == 50:
-            sErrorMessage = "The code you have entered is from a Steam Gift Card or Steam Wallet Code. Browse here: https://store.steampowered.com/account/redeemwalletcode to redeem it."
+        error_code = blob["purchase_result_details"]
+        if error_code == 14:
+            error_message = (
+                "The product code you've entered is not valid. Please double check to see if you've "
+                "mistyped your key. I, L, and 1 can look alike, as can V and Y, and 0 and O. "
+            )
+        elif error_code == 15:
+            error_message = (
+                "The product code you've entered has already been activated by a different Steam account. "
+                "This code cannot be used again. Please contact the retailer or online seller where the "
+                "code was purchased for assistance. "
+            )
+        elif error_code == 53:
+            error_message = (
+                "There have been too many recent activation attempts from this account or Internet "
+                "address. Please wait and try your product code again later. "
+            )
+        elif error_code == 13:
+            error_message = (
+                "Sorry, but this product is not available for purchase in this country. Your product key "
+                "has not been redeemed. "
+            )
+        elif error_code == 9:
+            error_message = (
+                "This Steam account already owns the product(s) contained in this offer. To access them, "
+                "visit your library in the Steam client. "
+            )
+        elif error_code == 24:
+            error_message = (
+                "The product code you've entered requires ownership of another product before "
+                "activation.\n\nIf you are trying to activate an expansion pack or downloadable content, "
+                "please first activate the original game, then activate this additional content. "
+            )
+        elif error_code == 36:
+            error_message = (
+                "The product code you have entered requires that you first play this game on the "
+                "PlayStation®3 system before it can be registered.\n\nPlease:\n\n- Start this game on "
+                "your PlayStation®3 system\n\n- Link your Steam account to your PlayStation®3 Network "
+                "account\n\n- Connect to Steam while playing this game on the PlayStation®3 system\n\n- "
+                "Register this product code through Steam. "
+            )
+        elif error_code == 50:
+            error_message = (
+                "The code you have entered is from a Steam Gift Card or Steam Wallet Code. Browse here: "
+                "https://store.steampowered.com/account/redeemwalletcode to redeem it. "
+            )
         else:
-            sErrorMessage = 'An unexpected error has occurred.  Your product code has not been redeemed.  Please wait 30 minutes and try redeeming the code again.  If the problem persists, please contact <a href="https://help.steampowered.com/en/wizard/HelpWithCDKey">Steam Support</a> for further assistance.'
-        if errorCode != 53 or not quiet:
-            #
-            print(sErrorMessage)
-        return errorCode
+            error_message = (
+                "An unexpected error has occurred.  Your product code has not been redeemed.  Please wait "
+                "30 minutes and try redeeming the code again.  If the problem persists, please contact <a "
+                'href="https://help.steampowered.com/en/wizard/HelpWithCDKey">Steam Support</a> for '
+                "further assistance. "
+            )
+        if error_code != 53 or not quiet:
+            print(error_message)
+        return error_code
 
 
 files = {}
@@ -211,30 +250,32 @@ def write_key(code, key):
     files[filename].flush()
 
 
-def prompt_skipped(skippedgames):
+def prompt_skipped(skipped_games):
     user_filtered = []
-    with open("skipped.txt", "w") as f:
-        for game in skippedgames.keys():
-            f.write(game + "\n")
+    with open("skipped.txt", "w") as file:
+        for skipped_game in skipped_games.keys():
+            file.write(skipped_game + "\n")
 
     print(
-        "Inside skipped.txt is a list of {skipped} games that we think you already own, but aren't completely sure".format(
-            skipped=len(skippedgames)
-        )
+        f"Inside skipped.txt is a list of {len(skipped_games)} games that we think you already own, but aren't "
+        f"completely sure "
     )
     try:
         input(
-            "Feel free to REMOVE from that list any games that you would like to try anyways, and when done press Enter to confirm."
+            "Feel free to REMOVE from that list any games that you would like to try anyways, and when done press "
+            "Enter to confirm. "
         )
     except SyntaxError:
         pass
 
-    with open("skipped.txt", "r") as f:
-        user_filtered = [line.strip() for line in f]
+    with open("skipped.txt", "r") as file:
+        user_filtered = [line.strip() for line in file]
 
     # Choose only the games that appear to be missing from user's skipped.txt file
     user_requested = [
-        skipgame for skipname, skipgame in skippedgames.items() if skipname not in user_filtered
+        skip_game
+        for skip_name, skip_game in skipped_games.items()
+        if skip_name not in user_filtered
     ]
     return user_requested
 
@@ -246,31 +287,31 @@ def redeem_steam_keys(humble_session, humble_keys):
     print("Getting your owned content to avoid attempting to register keys already owned...")
 
     # Query owned App IDs according to Steam
-    ownedcontent = session.get(steam_userdata_api).json()
-    ownedappids = ownedcontent["rgOwnedPackages"] + ownedcontent["rgOwnedApps"]
-    ownedappdetails = {
+    owned_content = session.get(STEAM_USERDATA_API).json()
+    owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
+    owned_app_details = {
         app["appid"]: app["name"]
-        for app in session.get(steam_appslist_api).json()["applist"]["apps"]
-        if app["appid"] in ownedappids
+        for app in session.get(STEAM_APP_LIST_API).json()["applist"]["apps"]
+        if app["appid"] in owned_app_ids
     }
 
-    notedkeys = [key for key in humble_keys if key["steam_app_id"] not in ownedappids]
-    skippedgames = {}
+    noted_keys = [key for key in humble_keys if key["steam_app_id"] not in owned_app_ids]
+    skipped_games = {}
     unownedgames = []
 
     # Some Steam keys come back with no Steam AppID from Humble
     # So we do our best to look up from AppIDs (no packages, because can't find an API for it)
     threshold = 70
-    for game in notedkeys:
+    for game in noted_keys:
         best_match = (None, None)
         # Do a string search based on product names.
         matches = [
             (fuzz.token_set_ratio(appname, game["human_name"]), appid)
-            for appid, appname in ownedappdetails.items()
+            for appid, appname in owned_app_details.items()
         ]
         if len(matches) > 1:
             matches = [
-                (fuzz.token_sort_ratio(ownedappdetails[appid], game["human_name"]), appid)
+                (fuzz.token_sort_ratio(owned_app_details[appid], game["human_name"]), appid)
                 for score, appid in matches
                 if score > threshold
             ]
@@ -278,8 +319,8 @@ def redeem_steam_keys(humble_session, humble_keys):
                 best_match = max(matches, key=lambda item: item[0])
         elif len(matches) == 1:
             best_match = matches[0]
-        if best_match[1] != None and best_match[1] in ownedappids:
-            skippedgames[game["human_name"].strip()] = game
+        if best_match[1] is not None and best_match[1] in owned_app_ids:
+            skipped_games[game["human_name"].strip()] = game
         else:
             unownedgames.append(game)
 
@@ -289,9 +330,9 @@ def redeem_steam_keys(humble_session, humble_keys):
         )
     )
 
-    if len(skippedgames):
+    if len(skipped_games):
         # Skipped games uncertain to be owned by user. Let user choose
-        unownedgames = unownedgames + prompt_skipped(skippedgames)
+        unownedgames = unownedgames + prompt_skipped(skipped_games)
         print("{} keys will be attempted.".format(len(unownedgames)))
 
     for key in unownedgames:
@@ -300,9 +341,8 @@ def redeem_steam_keys(humble_session, humble_keys):
         if "redeemed_key_val" not in key:
             # This key is unredeemed via Humble, trigger redemption process.
             redeemed_key = redeem_humble_key(humble_session, key)
-            key[
-                "redeemed_key_val"
-            ] = redeemed_key  # Worth noting this will only persist for this loop -- does not get saved to unownedgames' obj
+            key["redeemed_key_val"] = redeemed_key
+            # Worth noting this will only persist for this loop -- does not get saved to unownedgames' obj
 
         if not valid_steam_key(key["redeemed_key_val"]):
             # Most likely humble gift link
@@ -313,15 +353,15 @@ def redeem_steam_keys(humble_session, humble_keys):
         animation = "|/-\\"
         seconds = 0
         while code == 53:
-            ### NOTE
-            # Steam seems to limit to about 50 keys/hr -- even if all 50 keys are legitimate *sigh*
-            # Even worse: 10 *failed* keys/hr
-            # Duplication counts towards Steam's _failure rate limit_, hence why we've worked so hard above to figure out what we already own
-            ###
-            curanim = animation[seconds % len(animation)]
+            """NOTE
+            Steam seems to limit to about 50 keys/hr -- even if all 50 keys are legitimate *sigh*
+            Even worse: 10 *failed* keys/hr
+            Duplication counts towards Steam's _failure rate limit_,
+            hence why we've worked so hard above to figure out what we already own
+            """
+            current_animation = animation[seconds % len(animation)]
             print(
-                "Waiting for rate limit to go away (takes an hour after first key insert) "
-                + curanim,
+                f"Waiting for rate limit to go away (takes an hour after first key insert) {current_animation}",
                 end="\r",
             )
             time.sleep(1)
@@ -338,12 +378,12 @@ humble_session = requests.Session()
 humble_login(humble_session)
 print("Successfully signed in on Humble.")
 
-orders = humble_session.get(humble_orders_api).json()
-print("Getting {} order details, please wait".format(len(orders)))
+orders = humble_session.get(HUMBLE_ORDERS_API).json()
+print(f"Getting {len(orders)} order details, please wait")
 
 # TODO: multithread this
 order_details = [
-    humble_session.get(f"{humble_order_details_api}{order['gamekey']}?all_tpkds=true").json()
+    humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order['gamekey']}?all_tpkds=true").json()
     for order in orders
 ]
 
@@ -358,9 +398,9 @@ for game in order_details:
 
 filters = ["errored.csv", "already_owned.csv", "redeemed.csv"]
 original_length = len(steam_keys)
-for filterfile in filters:
+for filter_file in filters:
     try:
-        with open(filterfile, "r") as f:
+        with open(filter_file, "r") as f:
             keycols = f.read()
         filtered_keys = [keycol for keycol in keycols.replace("\n", ",").split(",")]
         steam_keys = [key for key in steam_keys if key["gamekey"] not in filtered_keys]
@@ -377,11 +417,8 @@ for key in steam_keys:
         unredeemed_keys.append(key)
 
 print(
-    "{keycnt} Steam keys -- {redeemedcnt} redeemed, {unredeemedcnt} unredeemed".format(
-        keycnt=len(steam_keys), redeemedcnt=len(redeemed_keys), unredeemedcnt=len(unredeemed_keys)
-    )
+    f"{len(steam_keys)} Steam keys -- {len(redeemed_keys)} redeemed, {len(unredeemed_keys)} unredeemed"
 )
-
 
 # TODO: Prompt the user for their preferences on redeeming on Steam all keys or subsets(redeemed, unredeemed, ambiguous, etc)
 
