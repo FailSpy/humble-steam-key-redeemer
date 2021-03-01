@@ -14,6 +14,13 @@ It will extract _all_ keys available for Steam from Humble, and check if any of 
 - `requests`: [requests](https://requests.readthedocs.io/en/master/)  
 - `python-Levenshtein`: [ztane/python-Levenshtein](https://github.com/ztane/python-Levenshtein) **OPTIONAL**  
 
-Install them all with `pip install steam fuzzywuzzy requests python-Levenshtein`
+Install the required dependencies with
+```
+pip install -r requirements.txt
+```
+If you want to install `python-Levenshtein`:
+```
+pip install python-Levenshtein
+```
 
 Tested with Python 3.7.9
