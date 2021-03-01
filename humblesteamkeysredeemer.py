@@ -3,6 +3,7 @@ from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import time
 import pickle
+import getpass
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
@@ -81,7 +82,7 @@ def humble_login(session):
     authorized = False
     while not authorized:
         username = input("Humble bundle email:")
-        password = input("Password:")
+        password = getpass.getpass("Password:")
         csr_freq = session.get(HUMBLE_LOGIN_PAGE)
 
         payload = {
