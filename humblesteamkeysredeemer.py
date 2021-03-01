@@ -81,7 +81,7 @@ def humble_login(session):
     # Saved session didn't work
     authorized = False
     while not authorized:
-        username = input("Humble bundle email: ")
+        username = input("Humble Email: ")
         password = getpass.getpass("Password: ")
         csrf_req = session.get(HUMBLE_LOGIN_PAGE)
 
@@ -155,7 +155,7 @@ def redeem_humble_key(sess, tpk):
     payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
     resp = sess.post(HUMBLE_REDEEM_API, data=payload, headers=headers)
     if resp.status_code != 200 or not resp.json()["success"]:
-        print("Error redeeming key on Humble Bundle for " + tpk["human_name"])
+        print("Error redeeming key on Humble for " + tpk["human_name"])
         return ""
     return resp.json()["key"]
 
