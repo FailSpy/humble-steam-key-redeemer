@@ -5,6 +5,7 @@
 #Used files
 *.csv
 .*cookies
+skipped.txt
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
