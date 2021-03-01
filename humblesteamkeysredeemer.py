@@ -65,7 +65,7 @@ def humble_login(session):
     # Saved session didn't work
     authorized = False
     while authorized == False:
-        username = input("Email:")
+        username = input("Humble bundle email:")
         password = input("Password:")
         csrfreq = session.get(humble_login_page)
 
