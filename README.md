@@ -1,9 +1,11 @@
 # humble-steam-key-redeemer
 Python script to extract all Humble keys and redeem them on Steam automagically.
 
-This is a script I hacked together to login to Humble and Steam, automating the redemption process. It's not perfect as I made this mostly for my own personal case and didn't test all possibilities: YMMV.
+This is primarily designed to be a set-it-and-forget-it tool that maximizes successful entry of keys into Steam, assuring that no Steam game goes unredeemed.
 
-It will extract _all_ keys available for Steam from Humble, and check if any of the keys are already owned by the logged-in Steam user. Of those that aren't, attempt to redeem them on Steam.
+This script will login to both Humble and Steam, automating the whole process. It's not perfect as I made this mostly for my own personal case and couldn't test all possibilities so YMMV. Feel free to send submit an issue if you do bump into issues.
+
+It will extract _all_ keys available for Steam from Humble, and check if any of the keys are already owned by the logged-in Steam user. Of those that aren't, attempt to redeem them on Steam. This is done because Steam has some pretty harsh rate limiting on key redemption -- 50 keys/hr, or 10 failed keys/hr, whichever comes first.
 
 ### Dependencies
 
