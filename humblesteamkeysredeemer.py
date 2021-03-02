@@ -293,7 +293,7 @@ def prompt_yes_no(question):
     ans = None
     answers = ["y","n"]
     while ans not in answers:
-        prompt = f"{question} [{'/'.join(answers)}]"
+        prompt = f"{question} [{'/'.join(answers)}] "
 
         ans = input(prompt).strip().lower()
         if ans not in answers:
