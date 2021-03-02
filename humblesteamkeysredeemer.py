@@ -93,49 +93,46 @@ def humble_login(session):
             "username": username,
             "password": password,
         }
-        headers["CSRF-Prevention-Token"] = csrf_req.cookies["csrf_cookie"]
+        headers["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
 
         r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
         login_json = r.json()
 
-        while True:
+        if "errors" in login_json and "username" in login_json["errors"]:
+            # Unknown email OR mismatched password
+            print(login_json["errors"]["username"][0])
+            continue
+
+        while "humble_guard_required" in login_json or "two_factor_required" in login_json:
             # There may be differences for Humble's SMS 2FA, haven't tested.
             if "humble_guard_required" in login_json:
                 humble_guard_code = input("Please enter the Humble security code: ")
                 payload["guard"] = humble_guard_code.upper()
                 # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
                 auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
-                auth_json = auth.json()
+                login_json = auth.json()
 
                 if (
-                    "user_terms_opt_in_data" in auth_json
-                    and auth_json["user_terms_opt_in_data"]["needs_to_opt_in"]
+                    "user_terms_opt_in_data" in login_json
+                    and login_json["user_terms_opt_in_data"]["needs_to_opt_in"]
                 ):
                     # Nope, not messing with this.
                     print(
                         "There's been an update to the TOS, please sign in to Humble on your browser."
                     )
                     exit()
-                if auth.status_code == 200:
-                    break
-                elif auth.status_code == 401:
-                    print("Sorry, your two-factor isn't supported yet.")
-                    exit()
-
-            if "errors" in login_json:
-                if "authy-input" in login_json["errors"]:
-                    code = input("Please enter 2FA code: ")
-                    payload["code"] = code
-                    r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
-                    login_json = r.json()
-                    if "errors" in login_json:
-                        print(login_json["errors"])
-                        exit()
-                    else:
-                        break
-                else:
-                    print(login_json["errors"])
-                    exit()
+            elif "two_factor_required" in login_json and "errors" in login_json and "authy-input" in login_json["errors"]:
+                code = input("Please enter 2FA code: ")
+                payload["code"] = code
+                auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
+                login_json = r.json()
+            elif "errors" in login_json:
+                print("Unexpected login error detected.")
+                print(login_json["errors"])
+                exit()
+            
+            if auth != None and auth.status_code == 200:
+                break
 
         export_cookies(".humblecookies", session)
         return True
