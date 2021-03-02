@@ -443,15 +443,15 @@ print(
     f"{len(steam_keys)} Steam keys total -- {len(revealed_keys)} revealed, {len(unrevealed_keys)} unrevealed"
 )
 
-will_reveal_keys = prompt_yes_no("Would you like to redeem on Humble as-yet unrevealed Steam keys?"
+will_reveal_keys = prompt_yes_no("Would you like to redeem on Humble as-yet un-revealed Steam keys?"
                             " (Revealing keys removes your ability to generate gift links for them)")
 if will_reveal_keys:
     try_already_revealed = prompt_yes_no("Would you like to attempt redeeming already-revealed keys as well?")
-    # User has chosen to either redeem all keys or just the 'revealed' ones.
-    redeem_steam_keys(humble_session, steam_keys if try_already_revealed else revealed_keys)
+    # User has chosen to either redeem all keys or just the 'unrevealed' ones.
+    redeem_steam_keys(humble_session, steam_keys if try_already_revealed else unrevealed_keys)
 else:
     # User has excluded unrevealed keys.
-    redeem_steam_keys(humble_session, unrevealed_keys)
+    redeem_steam_keys(humble_session, revealed_keys)
 
 # Cleanup
 for f in files:
