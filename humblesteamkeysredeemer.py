@@ -289,6 +289,19 @@ def prompt_skipped(skipped_games):
     ]
     return user_requested
 
+def prompt_yes_no(question):
+    ans = None
+    answers = ["y","n"]
+    while ans not in answers:
+        prompt = f"{question} [{'/'.join(answers)}]"
+
+        ans = input(prompt).strip().lower()
+        if ans not in answers:
+            print(f"{ans} is not a valid answer")
+            continue
+        else:
+            return True if ans == "y" else False
+
 
 def redeem_steam_keys(humble_session, humble_keys):
     session = steam_login()
@@ -397,8 +410,8 @@ order_details = [
     for order in orders
 ]
 
-unredeemed_keys = []
-redeemed_keys = []
+unrevealed_keys = []
+revealed_keys = []
 steam_keys = []
 for game in order_details:
     if "tpkd_dict" in game and "all_tpks" in game["tpkd_dict"]:
@@ -421,18 +434,24 @@ if len(steam_keys) != original_length:
 
 for key in steam_keys:
     if "redeemed_key_val" in key:
-        redeemed_keys.append(key)
+        revealed_keys.append(key)
     else:
-        # Has not been redeemed via Humble yet
-        unredeemed_keys.append(key)
+        # Has not been revealed via Humble yet
+        unrevealed_keys.append(key)
 
 print(
-    f"{len(steam_keys)} Steam keys -- {len(redeemed_keys)} redeemed, {len(unredeemed_keys)} unredeemed"
+    f"{len(steam_keys)} Steam keys total -- {len(revealed_keys)} revealed, {len(unrevealed_keys)} unrevealed"
 )
 
-# TODO: Prompt the user for their preferences on redeeming on Steam all keys or subsets(redeemed, unredeemed, ambiguous, etc)
-
-redeem_steam_keys(humble_session, steam_keys)
+will_reveal_keys = prompt_yes_no("Would you like to redeem on Humble as-yet unrevealed Steam keys?"
+                            " (Revealing keys removes your ability to generate gift links for them)")
+if will_reveal_keys:
+    try_already_revealed = prompt_yes_no("Would you like to attempt redeeming already-revealed keys as well?")
+    # User has chosen to either redeem all keys or just the 'revealed' ones.
+    redeem_steam_keys(humble_session, steam_keys if try_already_revealed else revealed_keys)
+else:
+    # User has excluded unrevealed keys.
+    redeem_steam_keys(humble_session, unrevealed_keys)
 
 # Cleanup
 for f in files:
