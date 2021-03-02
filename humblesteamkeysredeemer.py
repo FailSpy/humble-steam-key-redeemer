@@ -26,9 +26,22 @@ headers = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
 }
 
+MODE_PROMPT = """Welcome to the Humble Exporter!
+Which key export mode would you like to use?
 
-def validate_key_part(part):
-    return len(part) == 5
+[1] Auto-Redeem
+[2] Export keys
+"""
+def prompt_mode(order_details,humble_session):
+    mode = None
+    while mode not in ["1","2"]:
+        print(MODE_PROMPT)
+        mode = input("Choose 1 or 2: ").strip()
+        if mode in ["1","2"]:
+            return mode
+        else:
+            print("Invalid mode")
+    return mode
 
 
 def valid_steam_key(key):
@@ -39,7 +52,7 @@ def valid_steam_key(key):
     return (
         len(key) == 17
         and len(key_parts) == 3
-        and all([validate_key_part(part) for part in key_parts])
+        and all([len(part) == 5])
     )
 
 
@@ -289,6 +302,7 @@ def prompt_skipped(skipped_games):
     ]
     return user_requested
 
+
 def prompt_yes_no(question):
     ans = None
     answers = ["y","n"]
@@ -302,6 +316,35 @@ def prompt_yes_no(question):
         else:
             return True if ans == "y" else False
 
+def get_owned_apps(steam_session):
+    owned_content = steam_session.get(STEAM_USERDATA_API).json()
+    owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
+    owned_app_details = {
+        app["appid"]: app["name"]
+        for app in steam_session.get(STEAM_APP_LIST_API).json()["applist"]["apps"]
+        if app["appid"] in owned_app_ids
+    }
+    return owned_app_details
+
+def match_ownership(owned_app_details, game):
+    threshold = 70
+    best_match = (0, None)
+    # Do a string search based on product names.
+    matches = [
+        (fuzz.token_set_ratio(appname, game["human_name"]), appid)
+        for appid, appname in owned_app_details.items()
+    ]
+    refined_matches = [
+        (fuzz.token_sort_ratio(owned_app_details[appid], game["human_name"]), appid)
+        for score, appid in matches
+        if score > threshold
+    ]
+    if len(refined_matches) > 0:
+        best_match = max(refined_matches, key=lambda item: item[0])
+    elif len(refined_matches) == 1:
+        best_match = refined_matches[0]
+    return best_match
+
 
 def redeem_steam_keys(humble_session, humble_keys):
     session = steam_login()
@@ -310,39 +353,18 @@ def redeem_steam_keys(humble_session, humble_keys):
     print("Getting your owned content to avoid attempting to register keys already owned...")
 
     # Query owned App IDs according to Steam
-    owned_content = session.get(STEAM_USERDATA_API).json()
-    owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
-    owned_app_details = {
-        app["appid"]: app["name"]
-        for app in session.get(STEAM_APP_LIST_API).json()["applist"]["apps"]
-        if app["appid"] in owned_app_ids
-    }
+    owned_app_details = get_owned_apps(session)
 
-    noted_keys = [key for key in humble_keys if key["steam_app_id"] not in owned_app_ids]
+    noted_keys = [key for key in humble_keys if key["steam_app_id"] not in owned_app_details.keys()]
     skipped_games = {}
     unownedgames = []
 
     # Some Steam keys come back with no Steam AppID from Humble
     # So we do our best to look up from AppIDs (no packages, because can't find an API for it)
-    threshold = 70
+
     for game in noted_keys:
-        best_match = (None, None)
-        # Do a string search based on product names.
-        matches = [
-            (fuzz.token_set_ratio(appname, game["human_name"]), appid)
-            for appid, appname in owned_app_details.items()
-        ]
-        if len(matches) > 1:
-            matches = [
-                (fuzz.token_sort_ratio(owned_app_details[appid], game["human_name"]), appid)
-                for score, appid in matches
-                if score > threshold
-            ]
-            if len(matches) > 0:
-                best_match = max(matches, key=lambda item: item[0])
-        elif len(matches) == 1:
-            best_match = matches[0]
-        if best_match[1] is not None and best_match[1] in owned_app_ids:
+        best_match = match_ownership(owned_app_details,game)
+        if best_match[1] is not None and best_match[1] in owned_app_details.keys():
             skipped_games[game["human_name"].strip()] = game
         else:
             unownedgames.append(game)
@@ -396,6 +418,80 @@ def redeem_steam_keys(humble_session, humble_keys):
         write_key(code, key)
 
 
+def export_mode(humble_session,order_details):
+    export_key_headers = ['human_name','redeemed_key_val','is_gift','key_type_human_name','is_expired','steam_ownership']
+
+    steam_session = None
+    reveal_unrevealed = False
+    confirm_reveal = False
+
+    owned_app_details = None
+
+    keys = []
+    
+    print("Please configure your export:")
+    export_steam_only = prompt_yes_no("Export only Steam keys?")
+    export_revealed = prompt_yes_no("Export revealed keys?")
+    export_unrevealed = prompt_yes_no("Export unrevealed keys?")
+    if(not export_revealed and not export_unrevealed):
+        print("That leaves 0 keys...")
+        exit()
+    if(export_unrevealed):
+        reveal_unrevealed = prompt_yes_no("Reveal all unrevealed keys? (This will remove your ability to claim gift links on these)")
+        if(reveal_unrevealed):
+            extra = "Steam " if export_steam_only else ""
+            confirm_reveal = prompt_yes_no(f"Please CONFIRM that you would like ALL {extra}keys on Humble to be revealed, this can't be undone.")
+    steam_config = prompt_yes_no("Would you like to sign into Steam to detect ownership on the export data?")
+    
+    if(steam_config):
+        steam_session = steam_login()
+        if(verify_logins_session(steam_session)[1]):
+            owned_app_details = get_owned_apps(steam_session)
+    
+    for game in order_details:
+        if "tpkd_dict" in game and "all_tpks" in game["tpkd_dict"]:
+            for idx,tpk in enumerate(game["tpkd_dict"]["all_tpks"]):
+                revealed = "redeemed_key_val" in tpk
+                steam_key = tpk["key_type_human_name"] == "Steam"
+                valid_key_type = not export_steam_only or steam_key
+                export = (
+                    valid_key_type and 
+                    (
+                        (export_revealed and revealed) or 
+                        (export_unrevealed and not revealed)
+                    )
+                )
+
+                if(export):
+                    if(export_unrevealed and confirm_reveal):
+                        # Redeem key if user requests all keys to be revealed
+                        tpk = redeem_humble_key(humble_session,key)
+                    if(owned_app_details and steam_key):
+                        # User requested Steam Ownership info
+                        owned = tpk["steam_app_id"] in owned_app_details.keys()
+                        if(not owned):
+                            # Do a search to see if user owns it
+                            best_match = match_ownership(owned_app_details,tpk)
+                            owned = best_match[1] is not None and best_match[1] in owned_app_details.keys()
+                        tpk["steam_ownership"] = owned
+                    keys.append(tpk)
+    
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    filename = f"humble_export_{ts}.csv"
+    with open(filename,'w') as f:
+        f.write(','.join(export_key_headers)+"\n")
+        for key in keys:
+            row = []
+            for col in export_key_headers:
+                if col in key:
+                    row.append(str(key[col]))
+                else:
+                    row.append("")
+            f.write(','.join(row)+"\n")
+    
+    print(f"Exported to {filename}")
+
+    
 # Create a consistent session for Humble API use
 humble_session = requests.Session()
 humble_login(humble_session)
@@ -410,6 +506,13 @@ order_details = [
     for order in orders
 ]
 
+desired_mode = prompt_mode(order_details,humble_session)
+print(desired_mode)
+if(desired_mode == "2"):
+    export_mode(humble_session,order_details)
+    exit()
+
+# Auto-Redeem
 unrevealed_keys = []
 revealed_keys = []
 steam_keys = []
