@@ -121,7 +121,11 @@ def humble_login(session):
                         "There's been an update to the TOS, please sign in to Humble on your browser."
                     )
                     exit()
-            elif "two_factor_required" in login_json and "errors" in login_json and "authy-input" in login_json["errors"]:
+            elif (
+                "two_factor_required" in login_json and 
+                "errors" in login_json 
+                and "authy-input" in login_json["errors"]
+            ):
                 code = input("Please enter 2FA code: ")
                 payload["code"] = code
                 auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
