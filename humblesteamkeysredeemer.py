@@ -56,7 +56,7 @@ def valid_steam_key(key):
     return (
         len(key) == 17
         and len(key_parts) == 3
-        and all([len(part) == 5])
+        and all([len(part) == 5 for part in key_parts])
     )
 
 
