@@ -5,6 +5,9 @@ import time
 import pickle
 import getpass
 import os
+import sys
+
+sys.stderr = open('error.log','a')
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
