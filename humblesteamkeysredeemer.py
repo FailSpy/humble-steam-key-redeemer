@@ -5,15 +5,21 @@ import time
 import pickle
 import getpass
 import os
+import json
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
 HUMBLE_KEYS_PAGE = "https://www.humblebundle.com/home/library"
+HUMBLE_SUB_PAGE = "https://www.humblebundle.com/subscription/"
 
 HUMBLE_LOGIN_API = "https://www.humblebundle.com/processlogin"
 HUMBLE_REDEEM_API = "https://www.humblebundle.com/humbler/redeemkey"
 HUMBLE_ORDERS_API = "https://www.humblebundle.com/api/v1/user/order"
 HUMBLE_ORDER_DETAILS_API = "https://www.humblebundle.com/api/v1/order/"
+HUMBLE_SUB_API = "https://www.humblebundle.com/api/v1/subscriptions/humble_monthly/subscription_products_with_gamekeys/"
+
+HUMBLE_PAY_EARLY = "https://www.humblebundle.com/subscription/payearly"
+HUMBLE_CHOOSE_CONTENT = "https://www.humblebundle.com/humbler/choosecontent"
 
 # Steam endpoints
 STEAM_KEYS_PAGE = "https://store.steampowered.com/account/registerkey"
@@ -43,7 +49,6 @@ def prompt_mode(order_details,humble_session):
         else:
             print("Invalid mode")
     return mode
-
 
 def valid_steam_key(key):
     # Steam keys are in the format of AAAAA-BBBBB-CCCCC
@@ -181,6 +186,30 @@ def redeem_humble_key(sess, tpk):
         print("Error redeeming key on Humble for " + tpk["human_name"])
         return ""
     return resp.json()["key"]
+
+
+def get_month_data(humble_session,month):
+    # No real API for this, seems to just be served on the webpage.
+    r = humble_session.get(HUMBLE_SUB_PAGE + month["product"]["choice_url"])
+
+    data_indicator = f'<script id="webpack-monthly-product-data" type="application/json">'
+    jsondata = r.text.split(data_indicator)[1].split("</script>")[0].strip()
+    jsondata = json.loads(jsondata)
+    return jsondata["contentChoiceOptions"]
+
+
+def get_choices(humble_session,order_details):
+    months = [item for item in order_details if "is_humble_choice" in item["product"] and item["product"]["is_humble_choice"]]
+    months = sorted(months,key=lambda m: m["created"])
+    print([month["product"]["machine_name"] for month in months])
+    for month in months:
+        if month["choices_remaining"] > 0:
+            month["contentChoiceOptions"] = get_month_data(humble_session,month)
+            key = "initial" if "initial" in month["contentChoiceOptions"]["contentChoiceData"] else "initial-classic"
+            month["available_choices"] = month["contentChoiceOptions"]["contentChoiceData"][key]["display_order"]
+        else:
+            month["available_choices"] = None
+    return months
 
 
 def _redeem_steam(session, key, quiet=False):
