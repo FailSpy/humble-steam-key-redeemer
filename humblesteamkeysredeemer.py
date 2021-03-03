@@ -393,7 +393,7 @@ def redeem_steam_keys(humble_session, humble_keys):
 
         if key["human_name"] in redeemed or (key["steam_app_id"] != None and key["steam_app_id"] in redeemed):
             # We've bumped into a repeat of the same game!
-            write_key(9,key["human_name"])
+            write_key(9,key)
             continue
         else:
             if key["steam_app_id"] != None:
