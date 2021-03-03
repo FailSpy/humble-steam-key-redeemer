@@ -7,6 +7,7 @@ import getpass
 import os
 import json
 import sys
+import webbrowser
 
 sys.stderr = open('error.log','a')
 
@@ -36,22 +37,41 @@ headers = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
 }
 
+
+def find_dict_keys(node, kv, parent=False):
+    if isinstance(node, list):
+        for i in node:
+            for x in find_dict_keys(i, kv, parent):
+               yield x
+    elif isinstance(node, dict):
+        if kv in node:
+            if parent:
+                yield node
+            else:
+                yield node[kv]
+        for j in node.values():
+            for x in find_dict_keys(j, kv, parent):
+                yield x
+
+
 MODE_PROMPT = """Welcome to the Humble Exporter!
 Which key export mode would you like to use?
 
 [1] Auto-Redeem
 [2] Export keys
+[3] Humble Choice chooser
 """
 def prompt_mode(order_details,humble_session):
     mode = None
-    while mode not in ["1","2"]:
+    while mode not in ["1","2","3"]:
         print(MODE_PROMPT)
-        mode = input("Choose 1 or 2: ").strip()
-        if mode in ["1","2"]:
+        mode = input("Choose 1, 2, or 3: ").strip()
+        if mode in ["1","2","3"]:
             return mode
         else:
             print("Invalid mode")
     return mode
+
 
 def valid_steam_key(key):
     # Steam keys are in the format of AAAAA-BBBBB-CCCCC
@@ -202,17 +222,40 @@ def get_month_data(humble_session,month):
 
 
 def get_choices(humble_session,order_details):
-    months = [item for item in order_details if "is_humble_choice" in item["product"] and item["product"]["is_humble_choice"]]
+    months = [
+        month for month in order_details 
+        if "is_humble_choice" in month["product"] and 
+        month["product"]["is_humble_choice"]
+    ]
+
+    # Oldest to Newest order
     months = sorted(months,key=lambda m: m["created"])
-    print([month["product"]["machine_name"] for month in months])
+
+    choices = []
     for month in months:
         if month["choices_remaining"] > 0:
-            month["contentChoiceOptions"] = get_month_data(humble_session,month)
-            key = "initial" if "initial" in month["contentChoiceOptions"]["contentChoiceData"] else "initial-classic"
-            month["available_choices"] = month["contentChoiceOptions"]["contentChoiceData"][key]["display_order"]
-        else:
-            month["available_choices"] = None
-    return months
+            chosen_games = set(find_dict_keys(month["tpkd_dict"],"machine_name"))
+
+            month["choice_data"] = get_month_data(humble_session,month)
+            
+            # Needed for choosing
+            identifier = "initial" if "initial" in month["choice_data"]["contentChoiceData"] else "initial-classic"
+            
+            if identifier not in month["choice_data"]["contentChoiceData"]:
+                for key in month["choice_data"]["contentChoiceData"].keys():
+                    if "content_choices" in month["choice_data"]["contentChoiceData"][key]:
+                        identifier = key
+            choice_options = month["choice_data"]["contentChoiceData"][identifier]["content_choices"]
+
+            # Exclude games that have already been chosen:
+            month["available_choices"] = [
+                    game[1]
+                    for game in choice_options.items()
+                    if set(find_dict_keys(game[1],"machine_name")).isdisjoint(chosen_games)
+            ]
+            
+            month["parent_identifier"] = identifier
+            yield month
 
 
 def _redeem_steam(session, key, quiet=False):
@@ -494,33 +537,28 @@ def export_mode(humble_session,order_details):
         if(verify_logins_session(steam_session)[1]):
             owned_app_details = get_owned_apps(steam_session)
     
-    for game in order_details:
-        if "tpkd_dict" in game and "all_tpks" in game["tpkd_dict"]:
-            for idx,tpk in enumerate(game["tpkd_dict"]["all_tpks"]):
-                revealed = "redeemed_key_val" in tpk
-                steam_key = tpk["key_type_human_name"] == "Steam"
-                valid_key_type = not export_steam_only or steam_key
-                export = (
-                    valid_key_type and 
-                    (
-                        (export_revealed and revealed) or 
-                        (export_unrevealed and not revealed)
-                    )
-                )
+    desired_keys = "steam_app_id" if export_steam_only else "key_type_human_name"
+    keylist = list(find_dict_keys(order_details,desired_keys,True))
 
-                if(export):
-                    if(export_unrevealed and confirm_reveal):
-                        # Redeem key if user requests all keys to be revealed
-                        tpk = redeem_humble_key(humble_session,key)
-                    if(owned_app_details and steam_key):
-                        # User requested Steam Ownership info
-                        owned = tpk["steam_app_id"] in owned_app_details.keys()
-                        if(not owned):
-                            # Do a search to see if user owns it
-                            best_match = match_ownership(owned_app_details,tpk)
-                            owned = best_match[1] is not None and best_match[1] in owned_app_details.keys()
-                        tpk["steam_ownership"] = owned
-                    keys.append(tpk)
+    for idx,tpk in enumerate(keylist):
+        revealed = "redeemed_key_val" in tpk
+        export = (export_revealed and revealed) or (export_unrevealed and not revealed)
+
+        if(export):
+            if(export_unrevealed and confirm_reveal):
+                # Redeem key if user requests all keys to be revealed
+                tpk = redeem_humble_key(humble_session,key)
+            
+            if(owned_app_details != None and "steam_app_id" in tpk):
+                # User requested Steam Ownership info
+                owned = tpk["steam_app_id"] in owned_app_details.keys()
+                if(not owned):
+                    # Do a search to see if user owns it
+                    best_match = match_ownership(owned_app_details,tpk)
+                    owned = best_match[1] is not None and best_match[1] in owned_app_details.keys()
+                tpk["steam_ownership"] = owned
+            
+            keys.append(tpk)
     
     ts = time.strftime("%Y%m%d-%H%M%S")
     filename = f"humble_export_{ts}.csv"
@@ -537,6 +575,124 @@ def export_mode(humble_session,order_details):
     
     print(f"Exported to {filename}")
 
+
+def choose_games(humble_session,choice_month_name,identifier,chosen):
+    for choice in chosen:
+        display_name = choice["display_item_machine_name"]
+        if "tpkds" not in choice:
+            webbrowser.open(f"{HUMBLE_SUB_PAGE}{choice_month_name}/{display_name}")
+        else:
+            payload = {
+                "gamekey":choice["tpkds"][0]["gamekey"],
+                "parent_identifier":identifier,
+                "chosen_identifiers[]":display_name,
+                "is_multikey_and_from_choice_modal":"false"
+            }
+            res = humble_session.post(HUMBLE_CHOOSE_CONTENT,data=payload,headers=headers).json()
+            if not ("success" in res or not res["success"]):
+                print("Error choosing " + choice["title"])
+                print(res)
+            else:
+                print("Chose game " + choice["title"])
+
+
+def humble_chooser_mode(humble_session,order_details):
+    try_redeem_keys = []
+    months = get_choices(humble_session,order_details)
+    count = 0
+    first = True
+    for month in months:
+        redeem_all = None
+        if(first):
+            redeem_keys = prompt_yes_no("Would you like to auto-redeem these keys after? (Will require Steam login)")
+            first = False
+        
+        ready = False
+        while not ready:
+            remaining = month["choices_remaining"]
+            print()
+            print(month["product"]["human_name"])
+            print(f"Choices remaining: {remaining}")
+            print("Available Games:\n")
+            choices = month["available_choices"]
+            for idx,choice in enumerate(choices):
+                title = choice["title"]
+                rating = choice["user_rating"]["review_text"].replace('_',' ')
+                percentage = str(int(choice["user_rating"]["steam_percent|decimal"]*100)) + "%"
+                exception = ""
+                if "tpkds" not in choice:
+                    # These are weird cases that should be handled by Humble.
+                    exception = " (Must be redeemed through Humble directly)"
+                print(f"{idx+1}. {title} - {rating}({percentage}){exception}")
+            if(redeem_all == None and remaining == len(choices)):
+                redeem_all = prompt_yes_no("Would you like to redeem all?")
+            else:
+                redeem_all = False
+            
+            if(redeem_all):
+                user_input = [str(i+1) for i in range(0,len(choices))]
+            else:
+                if(redeem_keys):
+                    auto_redeem_note = "(We'll auto-redeem any keys activated via the webpage if you continue after!)"
+                else:
+                    auto_redeem_note = ""
+                print("\nOPTIONS:")
+                print("To choose games, list the indexes separated by commas (e.g. '1' or '1,2,3')")
+                print(f"Or type just 'link' to go to the webpage for this month {auto_redeem_note}")
+                print("Or just press Enter to move on.")
+
+                user_input = [uinput.strip() for uinput in input().split(',') if uinput.strip() != ""]
+
+            if(user_input[0].lower() == 'link'):
+                webbrowser.open(HUMBLE_SUB_PAGE + month["product"]["choice_url"])
+                if redeem_keys:
+                    # May have redeemed keys on the webpage.
+                    try_redeem_keys.append(month["gamekey"])
+            elif(len(user_input) == 0):
+                ready = True
+            else:
+                invalid_option = lambda option: (
+                    not option.isnumeric()
+                    or option == "0" 
+                    or int(option) > len(choices)
+                )
+                invalid = [option for option in user_input if invalid_option(option)]
+
+                if(len(invalid) > 0):
+                    print("Error interpreting options: " + ','.join(invalid))
+                    time.sleep(2)
+                else:
+                    user_input = set(int(opt) for opt in user_input) # Uniques
+                    chosen = [choice for idx,choice in enumerate(choices) if idx+1 in user_input]
+                    # This weird enumeration is to keep it in original display order
+
+                    if len(chosen) > remaining:
+                        print(f"Too many games chosen, you have only {remaining} choices left")
+                        time.sleep(2)
+                    else:
+                        print("\nGames selected:")
+                        for choice in chosen:
+                            print(choice["title"])
+                        confirmed = prompt_yes_no("Please type 'y' to confirm your selection")
+                        if confirmed:
+                            choice_month_name = month["product"]["choice_url"]
+                            identifier = month["parent_identifier"]
+                            choose_games(humble_session,choice_month_name,identifier,chosen)
+                            if redeem_keys:
+                                try_redeem_keys.append(month["gamekey"])
+                            ready = True
+    if(first):
+        print("No Humble Choices need choosing! Look at you all up-to-date!")
+    else:
+        print("No more unchosen Humble Choices")
+        if(redeem_keys and len(try_redeem_keys) > 0):
+            print("Redeeming keys now!")
+            updated_monthlies = [
+                humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order}?all_tpkds=true").json()
+                for order in try_redeem_keys
+            ]
+            chosen_keys = list(find_dict_keys(updated_monthlies,"steam_app_id",True))
+            redeem_steam_keys(humble_session,chosen_keys)
     
 # Create a consistent session for Humble API use
 humble_session = requests.Session()
@@ -557,16 +713,14 @@ print(desired_mode)
 if(desired_mode == "2"):
     export_mode(humble_session,order_details)
     exit()
+if(desired_mode == "3"):
+    humble_chooser_mode(humble_session,order_details)
+    exit()
 
-# Auto-Redeem
+# Auto-Redeem mode
 unrevealed_keys = []
 revealed_keys = []
-steam_keys = []
-for game in order_details:
-    if "tpkd_dict" in game and "all_tpks" in game["tpkd_dict"]:
-        steam_keys.extend(
-            [tpk for tpk in game["tpkd_dict"]["all_tpks"] if tpk["key_type_human_name"] == "Steam"]
-        )
+steam_keys = list(find_dict_keys(order_details,"steam_app_id",True))
 
 filters = ["errored.csv", "already_owned.csv", "redeemed.csv"]
 original_length = len(steam_keys)
