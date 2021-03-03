@@ -709,7 +709,6 @@ order_details = [
 ]
 
 desired_mode = prompt_mode(order_details,humble_session)
-print(desired_mode)
 if(desired_mode == "2"):
     export_mode(humble_session,order_details)
     exit()
