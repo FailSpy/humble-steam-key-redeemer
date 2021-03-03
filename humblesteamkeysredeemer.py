@@ -4,6 +4,7 @@ import steam.webauth as wa
 import time
 import pickle
 import getpass
+import os
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
@@ -290,10 +291,10 @@ def prompt_skipped(skipped_games):
         )
     except SyntaxError:
         pass
-
-    with open("skipped.txt", "r") as file:
-        user_filtered = [line.strip() for line in file]
-
+    if os.path.exists("skipped.txt"):
+        with open("skipped.txt", "r") as file:
+            user_filtered = [line.strip() for line in file]
+        os.remove("skipped.txt")
     # Choose only the games that appear to be missing from user's skipped.txt file
     user_requested = [
         skip_game
@@ -379,7 +380,9 @@ def redeem_steam_keys(humble_session, humble_keys):
         # Skipped games uncertain to be owned by user. Let user choose
         unownedgames = unownedgames + prompt_skipped(skipped_games)
         print("{} keys will be attempted.".format(len(unownedgames)))
-
+        # Preserve original order
+        unownedgames = sorted(unownedgames,key=lambda g: humble_keys.index(g))
+    
     for key in unownedgames:
         print(key["human_name"])
 
