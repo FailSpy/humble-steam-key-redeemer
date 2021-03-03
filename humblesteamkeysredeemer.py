@@ -6,6 +6,9 @@ import pickle
 import getpass
 import os
 import json
+import sys
+
+sys.stderr = open('error.log','a')
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
@@ -58,7 +61,7 @@ def valid_steam_key(key):
     return (
         len(key) == 17
         and len(key_parts) == 3
-        and all([len(part) == 5])
+        and all([len(part) == 5 for part in key_parts])
     )
 
 
