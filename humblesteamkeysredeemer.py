@@ -383,8 +383,19 @@ def redeem_steam_keys(humble_session, humble_keys):
         # Preserve original order
         unownedgames = sorted(unownedgames,key=lambda g: humble_keys.index(g))
     
+    redeemed = []
+
     for key in unownedgames:
         print(key["human_name"])
+
+        if key["human_name"] in redeemed or (key["steam_app_id"] != None and key["steam_app_id"] in redeemed):
+            # We've bumped into a repeat of the same game!
+            write_key(9,key["human_name"])
+            continue
+        else:
+            if key["steam_app_id"] != None:
+                redeemed.append(key["steam_app_id"])
+            redeemed.append(key["human_name"])
 
         if "redeemed_key_val" not in key:
             # This key is unredeemed via Humble, trigger redemption process.
