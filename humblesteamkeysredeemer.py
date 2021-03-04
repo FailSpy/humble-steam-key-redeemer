@@ -776,4 +776,4 @@ else:
 
 # Cleanup
 for f in files:
-    f.close()
+    files[f].close()
