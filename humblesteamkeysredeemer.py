@@ -207,10 +207,14 @@ def redeem_humble_key(sess, tpk):
     # This triggers that for a given Humble key entry
     payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
     resp = sess.post(HUMBLE_REDEEM_API, data=payload, headers=headers)
-    if resp.status_code != 200 or not resp.json()["success"]:
+    print(resp.text)
+    respjson = resp.json()
+    if resp.status_code != 200 or "error_msg" in respjson or not respjson["success"]:
         print("Error redeeming key on Humble for " + tpk["human_name"])
+        if("error_msg" in respjson):
+            print(respjson["error_msg"])
         return ""
-    return resp.json()["key"]
+    return respjson["key"]
 
 
 def get_month_data(humble_session,month):
@@ -553,7 +557,7 @@ def export_mode(humble_session,order_details):
         if(export):
             if(export_unrevealed and confirm_reveal):
                 # Redeem key if user requests all keys to be revealed
-                tpk = redeem_humble_key(humble_session,tpk)
+                tpk["redeemed_key_val"] = redeem_humble_key(humble_session,tpk)
             
             if(owned_app_details != None and "steam_app_id" in tpk):
                 # User requested Steam Ownership info
