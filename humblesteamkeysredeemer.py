@@ -617,13 +617,16 @@ def humble_chooser_mode(humble_session,order_details):
             choices = month["available_choices"]
             for idx,choice in enumerate(choices):
                 title = choice["title"]
-                rating = choice["user_rating"]["review_text"].replace('_',' ')
-                percentage = str(int(choice["user_rating"]["steam_percent|decimal"]*100)) + "%"
+                rating_text = ""
+                if("review_text" in choice["user_rating"] and "steam_percent|decimal" in choice["user_rating"]):
+                    rating = choice["user_rating"]["review_text"].replace('_',' ')
+                    percentage = str(int(choice["user_rating"]["steam_percent|decimal"]*100)) + "%"
+                    rating_text = f" - {rating}({percentage})"
                 exception = ""
                 if "tpkds" not in choice:
                     # These are weird cases that should be handled by Humble.
                     exception = " (Must be redeemed through Humble directly)"
-                print(f"{idx+1}. {title} - {rating}({percentage}){exception}")
+                print(f"{idx+1}. {title}{rating_text}{exception}")
             if(redeem_all == None and remaining == len(choices)):
                 redeem_all = prompt_yes_no("Would you like to redeem all?")
             else:
