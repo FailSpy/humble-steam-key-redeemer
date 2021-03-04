@@ -207,14 +207,16 @@ def redeem_humble_key(sess, tpk):
     # This triggers that for a given Humble key entry
     payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
     resp = sess.post(HUMBLE_REDEEM_API, data=payload, headers=headers)
-    print(resp.text)
     respjson = resp.json()
     if resp.status_code != 200 or "error_msg" in respjson or not respjson["success"]:
         print("Error redeeming key on Humble for " + tpk["human_name"])
         if("error_msg" in respjson):
             print(respjson["error_msg"])
         return ""
-    return respjson["key"]
+    try:
+        return respjson["key"]
+    except:
+        return resp.text
 
 
 def get_month_data(humble_session,month):
