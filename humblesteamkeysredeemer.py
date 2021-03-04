@@ -547,7 +547,7 @@ def export_mode(humble_session,order_details):
         if(export):
             if(export_unrevealed and confirm_reveal):
                 # Redeem key if user requests all keys to be revealed
-                tpk = redeem_humble_key(humble_session,key)
+                tpk = redeem_humble_key(humble_session,tpk)
             
             if(owned_app_details != None and "steam_app_id" in tpk):
                 # User requested Steam Ownership info
