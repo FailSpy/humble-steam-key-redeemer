@@ -8,6 +8,7 @@ import os
 import json
 import sys
 import webbrowser
+import os
 
 sys.stderr = open('error.log','a')
 
@@ -113,6 +114,7 @@ def verify_logins_session(session):
 
 
 def humble_login(session):
+    cls()
     # Attempt to use saved session
     if try_recover_cookies(".humblecookies", session) and verify_logins_session(session)[0]:
         headers["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
@@ -508,6 +510,8 @@ def redeem_steam_keys(humble_session, humble_keys):
 
 
 def export_mode(humble_session,order_details):
+    cls()
+
     export_key_headers = ['human_name','redeemed_key_val','is_gift','key_type_human_name','is_expired','steam_ownership']
 
     steam_session = None
@@ -609,6 +613,7 @@ def humble_chooser_mode(humble_session,order_details):
         
         ready = False
         while not ready:
+            cls()
             remaining = month["choices_remaining"]
             print()
             print(month["product"]["human_name"])
@@ -696,6 +701,14 @@ def humble_chooser_mode(humble_session,order_details):
             ]
             chosen_keys = list(find_dict_keys(updated_monthlies,"steam_app_id",True))
             redeem_steam_keys(humble_session,chosen_keys)
+
+def cls():
+    os.system('cls' if os.name=='nt' else 'clear')
+    print_main_header()
+
+def print_main_header():
+    print("-=FailSpy's Humble Bundle Helper!=-")
+    print("--------------------------------------")
     
 # Create a consistent session for Humble API use
 humble_session = requests.Session()
@@ -720,6 +733,7 @@ if(desired_mode == "3"):
     exit()
 
 # Auto-Redeem mode
+cls()
 unrevealed_keys = []
 revealed_keys = []
 steam_keys = list(find_dict_keys(order_details,"steam_app_id",True))
