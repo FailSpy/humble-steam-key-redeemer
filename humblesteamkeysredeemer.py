@@ -421,6 +421,8 @@ def match_ownership(owned_app_details, game):
         best_match = max(refined_matches, key=lambda item: item[0])
     elif len(refined_matches) == 1:
         best_match = refined_matches[0]
+    if best_match[0] < 35:
+        best_match = (0,None)
     return best_match
 
 
