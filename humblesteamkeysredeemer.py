@@ -643,13 +643,13 @@ def humble_chooser_mode(humble_session,order_details):
 
                 user_input = [uinput.strip() for uinput in input().split(',') if uinput.strip() != ""]
 
-            if(user_input[0].lower() == 'link'):
+            if(len(user_input) == 0):
+                ready = True
+            elif(user_input[0].lower() == 'link'):
                 webbrowser.open(HUMBLE_SUB_PAGE + month["product"]["choice_url"])
                 if redeem_keys:
                     # May have redeemed keys on the webpage.
                     try_redeem_keys.append(month["gamekey"])
-            elif(len(user_input) == 0):
-                ready = True
             else:
                 invalid_option = lambda option: (
                     not option.isnumeric()
