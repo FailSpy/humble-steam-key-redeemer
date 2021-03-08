@@ -582,7 +582,7 @@ def export_mode(humble_session,order_details):
             row = []
             for col in export_key_headers:
                 if col in key:
-                    row.append(str(key[col]))
+                    row.append("\"" + str(key[col]) + "\"")
                 else:
                     row.append("")
             f.write(','.join(row)+"\n")
