@@ -352,7 +352,7 @@ def write_key(code, key):
         filename = "errored.csv"
 
     if filename not in files:
-        files[filename] = open(filename, "a")
+        files[filename] = open(filename, "a", encoding="utf-8")
     key["human_name"] = key["human_name"].replace(",", ".")
     gamekey = key.get('gamekey')
     human_name = key.get("human_name")
@@ -364,7 +364,7 @@ def write_key(code, key):
 
 def prompt_skipped(skipped_games):
     user_filtered = []
-    with open("skipped.txt", "w") as file:
+    with open("skipped.txt", "w", encoding="utf-8") as file:
         for skipped_game in skipped_games.keys():
             file.write(skipped_game + "\n")
 
@@ -380,7 +380,7 @@ def prompt_skipped(skipped_games):
     except SyntaxError:
         pass
     if os.path.exists("skipped.txt"):
-        with open("skipped.txt", "r") as file:
+        with open("skipped.txt", "r", encoding="utf-8") as file:
             user_filtered = [line.strip() for line in file]
         os.remove("skipped.txt")
     # Choose only the games that appear to be missing from user's skipped.txt file
@@ -579,7 +579,7 @@ def export_mode(humble_session,order_details):
     
     ts = time.strftime("%Y%m%d-%H%M%S")
     filename = f"humble_export_{ts}.csv"
-    with open(filename,'w') as f:
+    with open(filename, 'w', encoding="utf-8") as f:
         f.write(','.join(export_key_headers)+"\n")
         for key in keys:
             row = []
