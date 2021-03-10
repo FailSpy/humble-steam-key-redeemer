@@ -354,7 +354,10 @@ def write_key(code, key):
     if filename not in files:
         files[filename] = open(filename, "a")
     key["human_name"] = key["human_name"].replace(",", ".")
-    output = "{gamekey},{human_name},{redeemed_key_val}\n".format(**key)
+    gamekey = key.get('gamekey')
+    human_name = key.get("human_name")
+    redeemed_key_val = key.get("redeemed_key_val")
+    output = f"{gamekey},{human_name},{redeemed_key_val}\n"
     files[filename].write(output)
     files[filename].flush()
 
