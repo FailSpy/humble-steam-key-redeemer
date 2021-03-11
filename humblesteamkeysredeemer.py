@@ -281,7 +281,14 @@ def _redeem_steam(session, key, quiet=False):
             print("Redeemed " + item["line_item_description"])
         return 0
     else:
-        error_code = blob["purchase_result_details"]
+        error_code = blob.get("purchase_result_details")
+        if error_code == None:
+            # Sometimes purchase_result_details isn't there for some reason, try alt method
+            error_code = blob.get("purchase_receipt_info")
+            if error_code != None:
+                error_code = error_code.get("result_detail")
+        error_code = error_code or 53
+
         if error_code == 14:
             error_message = (
                 "The product code you've entered is not valid. Please double check to see if you've "
