@@ -13,6 +13,8 @@ To remove an already added account, delete the associated `.(humble|steam)cookie
 
 ### Dependencies
 
+Requires Python version 3.6 or above
+
 - `steam`: [ValvePython/steam](https://github.com/ValvePython/steam)  
 - `fuzzywuzzy`: [seatgeek/fuzzywuzzy](https://github.com/seatgeek/fuzzywuzzy)  
 - `requests`: [requests](https://requests.readthedocs.io/en/master/)  
@@ -26,5 +28,3 @@ If you want to install `python-Levenshtein`:
 ```
 pip install python-Levenshtein
 ```
-
-Tested with Python 3.7.9
