@@ -1,4 +1,6 @@
 import requests
+from requests_futures.sessions import FuturesSession
+from concurrent.futures import as_completed
 from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import time
@@ -738,11 +740,15 @@ print("Successfully signed in on Humble.")
 orders = humble_session.get(HUMBLE_ORDERS_API).json()
 print(f"Getting {len(orders)} order details, please wait")
 
-# TODO: multithread this
-order_details = [
-    humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order['gamekey']}?all_tpkds=true").json()
-    for order in orders
-]
+order_details = []
+with FuturesSession(session=humble_session,max_workers=30) as retriever:
+    order_futures = [
+        retriever.get(f"{HUMBLE_ORDER_DETAILS_API}{order['gamekey']}?all_tpkds=true")
+        for order in orders
+    ]
+    for future in as_completed(order_futures):
+        resp = future.result()
+        order_details.append(resp.json())
 
 desired_mode = prompt_mode(order_details,humble_session)
 if(desired_mode == "2"):

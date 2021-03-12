@@ -1,3 +1,4 @@
 steam==1.2.0
 fuzzywuzzy==0.18.0
 requests==2.25.1
+requests-futures==1.0.0
