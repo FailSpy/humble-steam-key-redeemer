@@ -1,5 +1,5 @@
 @echo off
 echo Installing dependencies...
-pip install -r requirements.txt
+py -3 -m pip install -r requirements.txt
 echo Running
-python humblesteamkeysredeemer.py
+py -3 humblesteamkeysredeemer.py
