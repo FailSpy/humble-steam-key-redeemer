@@ -166,7 +166,7 @@ def humble_login(session):
                     print(
                         "There's been an update to the TOS, please sign in to Humble on your browser."
                     )
-                    exit()
+                    sys.exit()
             elif (
                 "two_factor_required" in login_json and 
                 "errors" in login_json 
@@ -179,7 +179,7 @@ def humble_login(session):
             elif "errors" in login_json:
                 print("Unexpected login error detected.")
                 print(login_json["errors"])
-                exit()
+                sys.exit()
             
             if auth != None and auth.status_code == 200:
                 break
@@ -550,7 +550,7 @@ def export_mode(humble_session,order_details):
     export_unrevealed = prompt_yes_no("Export unrevealed keys?")
     if(not export_revealed and not export_unrevealed):
         print("That leaves 0 keys...")
-        exit()
+        sys.exit()
     if(export_unrevealed):
         reveal_unrevealed = prompt_yes_no("Reveal all unrevealed keys? (This will remove your ability to claim gift links on these)")
         if(reveal_unrevealed):
@@ -753,10 +753,10 @@ with FuturesSession(session=humble_session,max_workers=30) as retriever:
 desired_mode = prompt_mode(order_details,humble_session)
 if(desired_mode == "2"):
     export_mode(humble_session,order_details)
-    exit()
+    sys.exit()
 if(desired_mode == "3"):
     humble_chooser_mode(humble_session,order_details)
-    exit()
+    sys.exit()
 
 # Auto-Redeem mode
 cls()
