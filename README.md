@@ -19,6 +19,7 @@ Requires Python version 3.6 or above
 - `fuzzywuzzy`: [seatgeek/fuzzywuzzy](https://github.com/seatgeek/fuzzywuzzy)  
 - `requests`: [requests](https://requests.readthedocs.io/en/master/)
 - `requests-futures`: [requests-futures](https://github.com/ross/requests-futures)  
+- `cloudscraper`: [cloudscraper](https://github.com/VeNoMouS/cloudscraper)
 - `python-Levenshtein`: [ztane/python-Levenshtein](https://github.com/ztane/python-Levenshtein) **OPTIONAL**  
 
 Install the required dependencies with
