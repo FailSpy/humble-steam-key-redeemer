@@ -1,4 +1,5 @@
 import requests
+import cloudscraper
 from requests_futures.sessions import FuturesSession
 from concurrent.futures import as_completed
 from fuzzywuzzy import fuzz
@@ -733,7 +734,7 @@ def print_main_header():
     print("--------------------------------------")
     
 # Create a consistent session for Humble API use
-humble_session = requests.Session()
+humble_session = cloudscraper.CloudScraper()
 humble_login(humble_session)
 print("Successfully signed in on Humble.")
 
