@@ -143,6 +143,9 @@ def humble_login(session):
         headers["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
 
         r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
+        if r.status_code == 403:
+            print("humblebundle.com has responded with an error (HTTP status code 403: Forbidden).")
+            sys.exit()
         login_json = r.json()
 
         if "errors" in login_json and "username" in login_json["errors"]:
