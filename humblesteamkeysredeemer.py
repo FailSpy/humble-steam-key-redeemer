@@ -12,6 +12,11 @@ import json
 import sys
 import webbrowser
 import os
+import selenium.webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import *
 
 sys.stderr = open('error.log','a')
 
@@ -35,12 +40,30 @@ STEAM_USERDATA_API = "https://store.steampowered.com/dynamicstore/userdata/"
 STEAM_REDEEM_API = "https://store.steampowered.com/account/ajaxregisterkey/"
 STEAM_APP_LIST_API = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 
-# May actually be able to do without these, but for now they're in.
-headers = {
-    "Content-Type": "application/x-www-form-urlencoded",
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-}
 
+def read_cookies():
+    if os.path.isfile("cookies.txt"):
+        with open("cookies.txt", "r") as file:
+            cookies = file.read().strip()
+            return cookies
+    else:
+        return ""
+
+headers = {
+    'authority': 'www.humblebundle.com',
+    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
+    'cookie': read_cookies(),
+    'sec-ch-ua': '"Chromium";v="111", "Not(A:Brand";v="8"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Linux"',
+    'sec-fetch-dest': 'document',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'same-origin',
+    'sec-fetch-user': '?1',
+    'upgrade-insecure-requests': '1',
+    'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
+}
 
 def find_dict_keys(node, kv, parent=False):
     if isinstance(node, list):
@@ -119,75 +142,92 @@ def verify_logins_session(session):
 def humble_login(session):
     cls()
     # Attempt to use saved session
-    if try_recover_cookies(".humblecookies", session) and verify_logins_session(session)[0]:
+    if try_recover_cookies(".humblecookies", session):
         headers["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
         return True
     else:
         session.cookies.clear()
 
-    # Saved session didn't work
-    authorized = False
-    while not authorized:
-        username = input("Humble Email: ")
-        password = getpass.getpass("Password: ")
-        csrf_req = session.get(HUMBLE_LOGIN_PAGE)
-
-        payload = {
-            "access_token": "",
-            "access_token_provider_id": "",
-            "goto": "/",
-            "qs": "",
-            "username": username,
-            "password": password,
-        }
-        headers["CSRF-Prevention-Token"] = session.cookies["csrf_cookie"]
-
-        r = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
-        login_json = r.json()
-
-        if "errors" in login_json and "username" in login_json["errors"]:
-            # Unknown email OR mismatched password
-            print(login_json["errors"]["username"][0])
-            continue
-
-        while "humble_guard_required" in login_json or "two_factor_required" in login_json:
-            # There may be differences for Humble's SMS 2FA, haven't tested.
-            if "humble_guard_required" in login_json:
-                humble_guard_code = input("Please enter the Humble security code: ")
-                payload["guard"] = humble_guard_code.upper()
-                # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
-                auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
-                login_json = auth.json()
-
-                if (
-                    "user_terms_opt_in_data" in login_json
-                    and login_json["user_terms_opt_in_data"]["needs_to_opt_in"]
-                ):
-                    # Nope, not messing with this.
-                    print(
-                        "There's been an update to the TOS, please sign in to Humble on your browser."
-                    )
-                    sys.exit()
-            elif (
-                "two_factor_required" in login_json and 
-                "errors" in login_json 
-                and "authy-input" in login_json["errors"]
-            ):
-                code = input("Please enter 2FA code: ")
-                payload["code"] = code
-                auth = session.post(HUMBLE_LOGIN_API, data=payload, headers=headers)
-                login_json = r.json()
-            elif "errors" in login_json:
-                print("Unexpected login error detected.")
-                print(login_json["errors"])
-                sys.exit()
-            
-            if auth != None and auth.status_code == 200:
-                break
-
-        export_cookies(".humblecookies", session)
+    # check for cookies.txt in current directory
+    if os.path.exists("cookies.txt"):
+        print("Using cookies.txt (in current directory) for login If you're using cookies.txt, make sure it's up to date! Otherwise, delete it and try again.")
+        global COOKIES
+        COOKIES = read_cookies()
         return True
 
+    # Saved session didn't work
+    username = input("Humble Email: ")
+    password = getpass.getpass("Password: ")
+    authorized = False
+    while not authorized:
+        driver = selenium.webdriver.Firefox()
+        driver.get(HUMBLE_LOGIN_PAGE)
+        wait = WebDriverWait(driver, 10)
+
+        # Login to Humble Bundle
+        driver.find_element(By.NAME, value="username").send_keys(username)
+        driver.find_element(By.NAME, value="password").send_keys(password)
+        driver.find_element(By.XPATH, value="/html/body/div[1]/div[3]/div[2]/div/div/div/section[1]/form/button").click()
+        # wait for request to complete
+        driver.implicitly_wait(20)
+        
+        isTwoFAValid = False
+        while not isTwoFAValid:
+            try:
+                # 2FA Code (if enabled)
+                if (driver.find_element(By.NAME, value="code").is_displayed()):
+                    print("2FA Enabled - Please enter code")
+                    # wait for user input 
+                    two_fa = input("Enter 2FA Code: ")
+                    # clear input field
+                    driver.find_element(By.NAME, value="code").clear()
+                    driver.find_element(By.NAME, value="code").send_keys(two_fa.upper())
+                    driver.find_element(By.XPATH, value="/html/body/div[1]/div[3]/div[2]/div/div/div/section[1]/form/button").click()
+                    try:
+                        # after clicking the button, wait for the page to load
+                        success = wait.until(lambda x: x.find_element(By.ID, "flash").is_displayed())
+                        if success:
+                            print("Login Successful")
+                            # Save cookies
+                            pickle.dump(driver.get_cookies(), open(".humblecookies", "wb"))
+
+                            cookies = {}
+                            for cookie in driver.get_cookies():
+                                cookies[cookie['name']] = cookie['value']
+
+                            # convert cookies from dict to string one line per key value pair
+                            cookies = '; '.join(['='.join(item) for item in cookies.items()])
+                            # save cookies to file
+                            with open('cookies.txt', 'w') as f:
+                                f.write(str(cookies))
+
+                            # close the browser
+                            driver.close()
+                            isTwoFAValid = True
+                            authorized = True
+                            break
+                    except TimeoutException:
+                        print("Invalid 2FA Code")
+                        continue
+            except NoSuchElementException:
+                isTwoFAValid = True
+                print("Login Successful")
+                # Save cookies
+                pickle.dump(driver.get_cookies(), open(".humblecookies", "wb"))
+
+                cookies = {}
+                for cookie in driver.get_cookies():
+                    cookies[cookie['name']] = cookie['value']
+                # convert cookies from dict to string one line per key value pair
+                cookies = '; '.join(['='.join(item) for item in cookies.items()])
+                # save cookies to file
+                with open('cookies.txt', 'w') as f:
+                    f.write(str(cookies))
+
+                # close the browser
+                driver.close()
+                authorized = True
+                break
 
 def steam_login():
     # Sign into Steam web
@@ -205,11 +245,15 @@ def steam_login():
     return session
 
 
-def redeem_humble_key(sess, tpk):
+def redeem_humble_key(tpk):
     # Keys need to be 'redeemed' on Humble first before the Humble API gives the user a Steam key.
     # This triggers that for a given Humble key entry
-    payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
-    resp = sess.post(HUMBLE_REDEEM_API, data=payload, headers=headers)
+    payload = {
+        "keytype": tpk["machine_name"], 
+        "key": tpk["gamekey"], 
+        "keyindex": tpk["keyindex"]
+        }
+    resp = requests.post(HUMBLE_REDEEM_API, data=payload, headers=headers)
     
     print(resp.text)
     respjson = resp.json()
@@ -224,9 +268,9 @@ def redeem_humble_key(sess, tpk):
         return resp.text
 
 
-def get_month_data(humble_session,month):
+def get_month_data(month):
     # No real API for this, seems to just be served on the webpage.
-    r = humble_session.get(HUMBLE_SUB_PAGE + month["product"]["choice_url"])
+    r = requests.get(HUMBLE_SUB_PAGE + month["product"]["choice_url"], headers=headers)
 
     data_indicator = f'<script id="webpack-monthly-product-data" type="application/json">'
     jsondata = r.text.split(data_indicator)[1].split("</script>")[0].strip()
@@ -234,7 +278,7 @@ def get_month_data(humble_session,month):
     return jsondata["contentChoiceOptions"]
 
 
-def get_choices(humble_session,order_details):
+def get_choices(order_details):
     months = [
         month for month in order_details 
         if "is_humble_choice" in month["product"] and 
@@ -249,7 +293,7 @@ def get_choices(humble_session,order_details):
         if month["choices_remaining"] > 0:
             chosen_games = set(find_dict_keys(month["tpkd_dict"],"machine_name"))
 
-            month["choice_data"] = get_month_data(humble_session,month)
+            month["choice_data"] = get_month_data(month)
             
             # Needed for choosing
             identifier = "initial" if "initial" in month["choice_data"]["contentChoiceData"] else "initial-classic"
@@ -447,7 +491,7 @@ def match_ownership(owned_app_details, game):
     return best_match
 
 
-def redeem_steam_keys(humble_session, humble_keys):
+def redeem_steam_keys(humble_keys):
     session = steam_login()
 
     print("Successfully signed in on Steam.")
@@ -499,7 +543,7 @@ def redeem_steam_keys(humble_session, humble_keys):
 
         if "redeemed_key_val" not in key:
             # This key is unredeemed via Humble, trigger redemption process.
-            redeemed_key = redeem_humble_key(humble_session, key)
+            redeemed_key = redeem_humble_key(key)
             key["redeemed_key_val"] = redeemed_key
             # Worth noting this will only persist for this loop -- does not get saved to unownedgames' obj
 
@@ -532,7 +576,7 @@ def redeem_steam_keys(humble_session, humble_keys):
         write_key(code, key)
 
 
-def export_mode(humble_session,order_details):
+def export_mode(order_details):
     cls()
 
     export_key_headers = ['human_name','redeemed_key_val','is_gift','key_type_human_name','is_expired','steam_ownership']
@@ -574,7 +618,7 @@ def export_mode(humble_session,order_details):
         if(export):
             if(export_unrevealed and confirm_reveal):
                 # Redeem key if user requests all keys to be revealed
-                tpk["redeemed_key_val"] = redeem_humble_key(humble_session,tpk)
+                tpk["redeemed_key_val"] = redeem_humble_key(tpk)
             
             if(owned_app_details != None and "steam_app_id" in tpk):
                 # User requested Steam Ownership info
@@ -603,7 +647,7 @@ def export_mode(humble_session,order_details):
     print(f"Exported to {filename}")
 
 
-def choose_games(humble_session,choice_month_name,identifier,chosen):
+def choose_games(choice_month_name,identifier,chosen):
     for choice in chosen:
         display_name = choice["display_item_machine_name"]
         if "tpkds" not in choice:
@@ -615,7 +659,7 @@ def choose_games(humble_session,choice_month_name,identifier,chosen):
                 "chosen_identifiers[]":display_name,
                 "is_multikey_and_from_choice_modal":"false"
             }
-            res = humble_session.post(HUMBLE_CHOOSE_CONTENT,data=payload,headers=headers).json()
+            res = requests.post(HUMBLE_CHOOSE_CONTENT,data=payload,headers=headers).json()
             if not ("success" in res or not res["success"]):
                 print("Error choosing " + choice["title"])
                 print(res)
@@ -623,9 +667,9 @@ def choose_games(humble_session,choice_month_name,identifier,chosen):
                 print("Chose game " + choice["title"])
 
 
-def humble_chooser_mode(humble_session,order_details):
+def humble_chooser_mode(order_details):
     try_redeem_keys = []
-    months = get_choices(humble_session,order_details)
+    months = get_choices(order_details)
     count = 0
     first = True
     for month in months:
@@ -708,7 +752,7 @@ def humble_chooser_mode(humble_session,order_details):
                         if confirmed:
                             choice_month_name = month["product"]["choice_url"]
                             identifier = month["parent_identifier"]
-                            choose_games(humble_session,choice_month_name,identifier,chosen)
+                            choose_games(choice_month_name,identifier,chosen)
                             if redeem_keys:
                                 try_redeem_keys.append(month["gamekey"])
                             ready = True
@@ -719,11 +763,11 @@ def humble_chooser_mode(humble_session,order_details):
         if(redeem_keys and len(try_redeem_keys) > 0):
             print("Redeeming keys now!")
             updated_monthlies = [
-                humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order}?all_tpkds=true").json()
+                requests.get(f"{HUMBLE_ORDER_DETAILS_API}{order}?all_tpkds=true", headers=headers).json()
                 for order in try_redeem_keys
             ]
             chosen_keys = list(find_dict_keys(updated_monthlies,"steam_app_id",True))
-            redeem_steam_keys(humble_session,chosen_keys)
+            redeem_steam_keys(chosen_keys)
 
 def cls():
     os.system('cls' if os.name=='nt' else 'clear')
@@ -737,26 +781,27 @@ def print_main_header():
 humble_session = cloudscraper.CloudScraper()
 humble_login(humble_session)
 print("Successfully signed in on Humble.")
+print("Writing cookies to file for future use. Please wait...")
+print("Please re-run the script with the cookie file in the same directory as this script. (Only needed once or when cookies expire or deleted)")
 
-orders = humble_session.get(HUMBLE_ORDERS_API).json()
+orders = requests.get(HUMBLE_ORDERS_API, headers=headers).json()
 print(f"Getting {len(orders)} order details, please wait")
 
 order_details = []
 with FuturesSession(session=humble_session,max_workers=30) as retriever:
     order_futures = [
-        retriever.get(f"{HUMBLE_ORDER_DETAILS_API}{order['gamekey']}?all_tpkds=true")
+        requests.get(f"{HUMBLE_ORDER_DETAILS_API}{order['gamekey']}?all_tpkds=true", headers=headers)
         for order in orders
     ]
-    for future in as_completed(order_futures):
-        resp = future.result()
-        order_details.append(resp.json())
+    for future in order_futures:
+        order_details.append(future.json())
 
 desired_mode = prompt_mode(order_details,humble_session)
 if(desired_mode == "2"):
-    export_mode(humble_session,order_details)
+    export_mode(order_details)
     sys.exit()
 if(desired_mode == "3"):
-    humble_chooser_mode(humble_session,order_details)
+    humble_chooser_mode(order_details)
     sys.exit()
 
 # Auto-Redeem mode
@@ -794,10 +839,10 @@ will_reveal_keys = prompt_yes_no("Would you like to redeem on Humble as-yet un-r
 if will_reveal_keys:
     try_already_revealed = prompt_yes_no("Would you like to attempt redeeming already-revealed keys as well?")
     # User has chosen to either redeem all keys or just the 'unrevealed' ones.
-    redeem_steam_keys(humble_session, steam_keys if try_already_revealed else unrevealed_keys)
+    redeem_steam_keys(steam_keys if try_already_revealed else unrevealed_keys)
 else:
     # User has excluded unrevealed keys.
-    redeem_steam_keys(humble_session, revealed_keys)
+    redeem_steam_keys(revealed_keys)
 
 # Cleanup
 for f in files:
