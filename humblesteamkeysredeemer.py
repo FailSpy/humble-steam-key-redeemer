@@ -1,7 +1,6 @@
 import requests
 import cloudscraper
 from requests_futures.sessions import FuturesSession
-from concurrent.futures import as_completed
 from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import time
@@ -12,11 +11,12 @@ import json
 import sys
 import webbrowser
 import os
+import stem.process
 import selenium.webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import *
+from selenium.webdriver.firefox.options import Options
 
 sys.stderr = open('error.log','a')
 
@@ -138,6 +138,26 @@ def verify_logins_session(session):
         loggedin.append(r.status_code != 301 and r.status_code != 302)
     return loggedin
 
+def tor_log_handler(line):
+    print(f"TOR: {line}")
+
+
+def start_tor():
+    tor_process = stem.process.launch_tor_with_config(
+        config={
+            'SocksPort': '9050',
+        },
+        take_ownership=True,
+        init_msg_handler=tor_log_handler,
+    )
+    return tor_process
+
+def setup_tor_proxy(options):
+    options.set_preference("network.proxy.type", 1)
+    options.set_preference("network.proxy.socks", "127.0.0.1")
+    options.set_preference("network.proxy.socks_port", 9050)
+    options.set_preference("network.proxy.socks_version", 5)
+    return options
 
 def humble_login(session):
     cls()
@@ -154,13 +174,31 @@ def humble_login(session):
         global COOKIES
         COOKIES = read_cookies()
         return True
+    
+    # Ask the user if they want to use the Tor network
+    use_tor = input("Do you want to use the Tor network? (y/n): ").lower() == "y"
+    
+    # Start the Tor process if the user wants to use the Tor network
+    tor_process = None
+    if use_tor:
+        tor_process = start_tor()
 
     # Saved session didn't work
     username = input("Humble Email: ")
     password = getpass.getpass("Password: ")
     authorized = False
     while not authorized:
-        driver = selenium.webdriver.Firefox()
+        options = Options()
+        options.set_preference("browser.privatebrowsing.autostart", False)
+
+        # Set up the Tor proxy for the WebDriver if the user wants to use the Tor network
+        if use_tor:
+            options = setup_tor_proxy(options)
+
+        driver = selenium.webdriver.Firefox(options=options)
+
+
+
         driver.get(HUMBLE_LOGIN_PAGE)
         wait = WebDriverWait(driver, 10)
 
@@ -200,11 +238,16 @@ def humble_login(session):
                             # save cookies to file
                             with open('cookies.txt', 'w') as f:
                                 f.write(str(cookies))
+                            
+                            print("Cookies saved to cookies.txt")
 
                             # close the browser
                             driver.close()
                             isTwoFAValid = True
                             authorized = True
+                            # Stop the Tor process after the login process is completed
+                            if tor_process:
+                                tor_process.kill()
                             break
                     except TimeoutException:
                         print("Invalid 2FA Code")
