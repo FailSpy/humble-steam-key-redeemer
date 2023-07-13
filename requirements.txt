@@ -2,6 +2,6 @@ steam==1.2.0
 fuzzywuzzy==0.18.0
 requests==2.25.1
 requests-futures==1.0.0
-cloudscraper==1.2.58
+cloudscraper==1.2.69
 selenium==4.8.2
 stem==1.8.0
