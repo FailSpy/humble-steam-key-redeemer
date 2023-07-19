@@ -1,4 +1,4 @@
-steam==1.2.0
-fuzzywuzzy==0.18.0
-requests==2.25.1
+steam>=1.2.0
+fuzzywuzzy>=0.17.0
+requests>=2.25.1
 selenium>=4.10.0
