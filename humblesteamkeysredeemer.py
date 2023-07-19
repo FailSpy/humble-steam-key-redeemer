@@ -321,11 +321,9 @@ def redeem_humble_key(sess, tpk):
     # Keys need to be 'redeemed' on Humble first before the Humble API gives the user a Steam key.
     # This triggers that for a given Humble key entry
     payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
-    status,resp = perform_post(sess, HUMBLE_REDEEM_API, payload)
+    status,respjson = perform_post(sess, HUMBLE_REDEEM_API, payload)
     
-    print(resp.text)
-    respjson = resp.json()
-    if resp.status_code != 200 or "error_msg" in respjson or not respjson["success"]:
+    if status != 200 or "error_msg" in respjson or not respjson["success"]:
         print("Error redeeming key on Humble for " + tpk["human_name"])
         if("error_msg" in respjson):
             print(respjson["error_msg"])
@@ -741,7 +739,7 @@ def choose_games(humble_session,choice_month_name,identifier,chosen):
                 "chosen_identifiers[]":display_name,
                 "is_multikey_and_from_choice_modal":"false"
             }
-            status,res = perform_post(driver,HUMBLE_CHOOSE_CONTENT,payload).json()
+            status,res = perform_post(driver,HUMBLE_CHOOSE_CONTENT,payload)
             if not ("success" in res or not res["success"]):
                 print("Error choosing " + choice["title"])
                 print(res)
@@ -848,7 +846,7 @@ def humble_chooser_mode(humble_session,order_details):
         if(redeem_keys and len(try_redeem_keys) > 0):
             print("Redeeming keys now!")
             updated_monthlies = [
-                humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order}?all_tpkds=true").json()
+                humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order}?all_tpkds=true")
                 for order in try_redeem_keys
             ]
             chosen_keys = list(find_dict_keys(updated_monthlies,"steam_app_id",True))
