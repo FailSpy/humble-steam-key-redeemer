@@ -1,8 +1,6 @@
 import requests
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
-from requests_futures.sessions import FuturesSession
-from concurrent.futures import as_completed
 from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import time
@@ -17,7 +15,8 @@ from base64 import b64encode
 import atexit
 import signal
 
-sys.stderr = open('error.log','a')
+if __name__ == "__main__":
+    sys.stderr = open('error.log','a')
 
 # Humble endpoints
 HUMBLE_LOGIN_PAGE = "https://www.humblebundle.com/login"
