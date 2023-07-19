@@ -321,7 +321,7 @@ def redeem_humble_key(sess, tpk):
     # Keys need to be 'redeemed' on Humble first before the Humble API gives the user a Steam key.
     # This triggers that for a given Humble key entry
     payload = {"keytype": tpk["machine_name"], "key": tpk["gamekey"], "keyindex": tpk["keyindex"]}
-    resp = perform_post(sess, HUMBLE_REDEEM_API, payload)
+    status,resp = perform_post(sess, HUMBLE_REDEEM_API, payload)
     
     print(resp.text)
     respjson = resp.json()
@@ -741,7 +741,7 @@ def choose_games(humble_session,choice_month_name,identifier,chosen):
                 "chosen_identifiers[]":display_name,
                 "is_multikey_and_from_choice_modal":"false"
             }
-            res = perform_post(driver,HUMBLE_CHOOSE_CONTENT,payload).json()
+            status,res = perform_post(driver,HUMBLE_CHOOSE_CONTENT,payload).json()
             if not ("success" in res or not res["success"]):
                 print("Error choosing " + choice["title"])
                 print(res)
