@@ -62,13 +62,24 @@ def find_dict_keys(node, kv, parent=False):
 
 getHumbleOrders = '''
 var done = arguments[arguments.length - 1];
-var getHumbleOrderDetails = async () => {
+var list = '%optional%';
+if (list){
+    list = JSON.parse(list);
+} else {
+    list = [];
+}
+var getHumbleOrderDetails = async (list) => {
   const HUMBLE_ORDERS_API_URL = 'https://www.humblebundle.com/api/v1/user/order';
   const HUMBLE_ORDER_DETAILS_API = 'https://www.humblebundle.com/api/v1/order/';
 
   try {
-    const response = await fetch(HUMBLE_ORDERS_API_URL);
-    const orders = await response.json();
+    var orders = []
+    if(list.length){
+      orders = list.map(item => ({ gamekey: item }));
+    } else {
+      const response = await fetch(HUMBLE_ORDERS_API_URL);
+      orders = await response.json();
+    }
     const orderDetailsPromises = orders.map(async (order) => {
       const orderDetailsUrl = `${HUMBLE_ORDER_DETAILS_API}${order['gamekey']}?all_tpkds=true`;
       const orderDetailsResponse = await fetch(orderDetailsUrl);
@@ -84,7 +95,7 @@ var getHumbleOrderDetails = async () => {
   }
 };
 
-getHumbleOrderDetails().then(r => {done([r])});
+getHumbleOrderDetails(list).then(r => {done(r)});
 '''
 
 fetch_cmd = '''
@@ -196,7 +207,6 @@ def try_recover_cookies(cookie_file, session):
                 session.add_cookie(cookie)
         return True
     except Exception as e:
-        raise e
         return False
 
 
@@ -336,6 +346,8 @@ def redeem_humble_key(sess, tpk):
 
 def get_month_data(humble_session,month):
     # No real API for this, seems to just be served on the webpage.
+    if type(humble_session) is not requests.Session:
+        raise Exception("get_month_data needs a configured requests session")
     r = humble_session.get(HUMBLE_SUB_PAGE + month["product"]["choice_url"])
 
     data_indicator = f'<script id="webpack-monthly-product-data" type="application/json">'
@@ -845,10 +857,7 @@ def humble_chooser_mode(humble_session,order_details):
         print("No more unchosen Humble Choices")
         if(redeem_keys and len(try_redeem_keys) > 0):
             print("Redeeming keys now!")
-            updated_monthlies = [
-                humble_session.get(f"{HUMBLE_ORDER_DETAILS_API}{order}?all_tpkds=true")
-                for order in try_redeem_keys
-            ]
+            updated_monthlies = humble_session.execute_async_script(getHumbleOrders.replace('%optional%',json.dumps(try_redeem_keys)))
             chosen_keys = list(find_dict_keys(updated_monthlies,"steam_app_id",True))
             redeem_steam_keys(humble_session,chosen_keys)
 
@@ -868,7 +877,7 @@ if __name__=="__main__":
 
     print(f"Getting order details, please wait")
 
-    order_details = driver.execute_async_script(getHumbleOrders)[0]
+    order_details = driver.execute_async_script(getHumbleOrders.replace('%optional%',''))
 
     desired_mode = prompt_mode(order_details,driver)
     if(desired_mode == "2"):
