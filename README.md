@@ -18,8 +18,7 @@ Requires Python version 3.6 or above
 - `steam`: [ValvePython/steam](https://github.com/ValvePython/steam)  
 - `fuzzywuzzy`: [seatgeek/fuzzywuzzy](https://github.com/seatgeek/fuzzywuzzy)  
 - `requests`: [requests](https://requests.readthedocs.io/en/master/)
-- `requests-futures`: [requests-futures](https://github.com/ross/requests-futures)  
-- `cloudscraper`: [cloudscraper](https://github.com/VeNoMouS/cloudscraper)
+- `selenium`: [selenium](https://www.selenium.dev/)
 - `python-Levenshtein`: [ztane/python-Levenshtein](https://github.com/ztane/python-Levenshtein) **OPTIONAL**  
 
 Install the required dependencies with
