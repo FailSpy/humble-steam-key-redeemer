@@ -370,14 +370,12 @@ def get_choices(humble_session,order_details):
                 continue
 
             v3 = not month["choice_data"].get("usesChoices",True)
-            print(month["choice_data"].keys())
             
             # Needed for choosing
             if v3:
                 identifier = "initial"
                 choice_options = month["choice_data"]["contentChoiceData"]["game_data"]
             else:
-                print(month["choice_data"]["productUrlPath"])
                 identifier = "initial" if "initial" in month["choice_data"]["contentChoiceData"] else "initial-classic"
             
                 if identifier not in month["choice_data"]["contentChoiceData"]:
