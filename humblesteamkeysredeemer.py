@@ -565,7 +565,7 @@ def get_owned_apps(steam_session):
     }
     return owned_app_details
 
-def match_ownership(owned_app_details, game):
+def match_ownership(owned_app_details, game, filter_live):
     threshold = 70
     best_match = (0, None)
     # Do a string search based on product names.
@@ -578,16 +578,37 @@ def match_ownership(owned_app_details, game):
         for score, appid in matches
         if score > threshold
     ]
-    if len(refined_matches) > 0:
+    
+    if filter_live and len(refined_matches) > 0:
+        cls()
         best_match = max(refined_matches, key=lambda item: item[0])
         if best_match[0] == 100:
             return best_match
-    elif len(refined_matches) == 1:
-        best_match = refined_matches[0]
-    if best_match[0] < 35:
-        best_match = (0,None)
+        print("steam games you own")
+        for match in refined_matches:
+            print(f"     {owned_app_details[match[1]]}: {match[0]}")
+        if prompt_yes_no(f"Is \"{game['human_name']}\" in the above list?"):
+            return refined_matches[0]
+        else:
+            return (0,None)
+    else:
+        if len(refined_matches) > 0:
+            best_match = max(refined_matches, key=lambda item: item[0])
+        elif len(refined_matches) == 1:
+            best_match = refined_matches[0]
+        if best_match[0] < 35:
+            best_match = (0,None)
     return best_match
 
+def prompt_filter_live():
+    mode = None
+    while mode not in ["y","n"]:
+        mode = input("You can either see a list of games we think you already own later in a file, or filter them now. Would you like to see them now? [y/n] ").strip()
+        if mode in ["y","n"]:
+            return mode
+        else:
+            print("Enter y or n")
+    return mode
 
 def redeem_steam_keys(humble_session, humble_keys):
     session = steam_login()
@@ -605,8 +626,10 @@ def redeem_steam_keys(humble_session, humble_keys):
     # Some Steam keys come back with no Steam AppID from Humble
     # So we do our best to look up from AppIDs (no packages, because can't find an API for it)
 
+    filter_live = prompt_filter_live() == "y"
+
     for game in noted_keys:
-        best_match = match_ownership(owned_app_details,game)
+        best_match = match_ownership(owned_app_details,game,filter_live)
         if best_match[1] is not None and best_match[1] in owned_app_details.keys():
             skipped_games[game["human_name"].strip()] = game
         else:
