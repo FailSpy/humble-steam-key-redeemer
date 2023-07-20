@@ -275,11 +275,7 @@ def humble_login(driver):
                 humble_guard_code = input("Please enter the Humble security code: ")
                 payload["guard"] = humble_guard_code.upper()
                 # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
-                try:
-                    auth,login_json = perform_post(driver, HUMBLE_LOGIN_API, payload)
-                except Exception as e:
-                    print(e)
-                    raise e
+                auth,login_json = perform_post(driver, HUMBLE_LOGIN_API, payload)
 
                 if (
                     "user_terms_opt_in_data" in login_json
@@ -922,10 +918,10 @@ if __name__=="__main__":
     if will_reveal_keys:
         try_already_revealed = prompt_yes_no("Would you like to attempt redeeming already-revealed keys as well?")
         # User has chosen to either redeem all keys or just the 'unrevealed' ones.
-        redeem_steam_keys(humble_session, steam_keys if try_already_revealed else unrevealed_keys)
+        redeem_steam_keys(driver, steam_keys if try_already_revealed else unrevealed_keys)
     else:
         # User has excluded unrevealed keys.
-        redeem_steam_keys(humble_session, revealed_keys)
+        redeem_steam_keys(driver, revealed_keys)
 
     # Cleanup
     for f in files:
