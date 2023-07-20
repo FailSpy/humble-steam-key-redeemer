@@ -219,7 +219,7 @@ def export_cookies(cookie_file, session):
         else:
             # handle WebDriver
             cookies = session.get_cookies()
-        pickle.dump(session.get_cookies(), open(cookie_file,"wb"))
+        pickle.dump(cookies, open(cookie_file,"wb"))
         return True
     except:
         return False
