@@ -897,9 +897,9 @@ if __name__=="__main__":
         try:
             with open(filter_file, "r") as f:
                 keycols = f.read()
-            filtered_keys = [keycol for keycol in keycols.replace("\n", ",").split(",")]
-            steam_keys = [key for key in steam_keys if key["redeemed_key_val"] not in filtered_keys]
-        except:
+            filtered_keys = [keycol.strip() for keycol in keycols.replace("\n", ",").split(",")]
+            steam_keys = [key for key in steam_keys if key.get("redeemed_key_val",False) not in filtered_keys]
+        except FileNotFoundError:
             pass
     if len(steam_keys) != original_length:
         print("Filtered {} keys from previous runs".format(original_length - len(steam_keys)))
