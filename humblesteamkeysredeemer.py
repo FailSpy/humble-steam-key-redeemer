@@ -572,6 +572,8 @@ def match_ownership(owned_app_details, game):
     ]
     if len(refined_matches) > 0:
         best_match = max(refined_matches, key=lambda item: item[0])
+        if best_match[0] == 100:
+            return best_match
     elif len(refined_matches) == 1:
         best_match = refined_matches[0]
     if best_match[0] < 35:
@@ -896,7 +898,7 @@ if __name__=="__main__":
             with open(filter_file, "r") as f:
                 keycols = f.read()
             filtered_keys = [keycol for keycol in keycols.replace("\n", ",").split(",")]
-            steam_keys = [key for key in steam_keys if key["gamekey"] not in filtered_keys]
+            steam_keys = [key for key in steam_keys if key["redeemed_key_val"] not in filtered_keys]
         except:
             pass
     if len(steam_keys) != original_length:
