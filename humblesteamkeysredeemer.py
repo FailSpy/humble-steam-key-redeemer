@@ -239,6 +239,13 @@ def verify_logins_session(session):
     else:
         return [session.execute_async_script(is_logged_in),False]
 
+def do_login(driver,payload):
+        auth,login_json = perform_post(driver,HUMBLE_LOGIN_API,payload)
+        if auth not in (200,401):
+            print(f"humblebundle.com has responded with an error (HTTP status code {auth}: {responses[auth]}).")
+            time.sleep(30)
+            sys.exit()
+        return auth,login_json
 
 def humble_login(driver):
     cls()
@@ -263,10 +270,7 @@ def humble_login(driver):
             "password": password,
         }
 
-        auth,login_json = perform_post(driver,HUMBLE_LOGIN_API,payload)
-        if auth not in (200,401):
-            print(f"humblebundle.com has responded with an error (HTTP status code {auth}: {responses[auth]}).")
-            sys.exit()
+        auth,login_json = do_login(driver,payload)
 
         if "errors" in login_json and "username" in login_json["errors"]:
             # Unknown email OR mismatched password
@@ -279,7 +283,7 @@ def humble_login(driver):
                 humble_guard_code = input("Please enter the Humble security code: ")
                 payload["guard"] = humble_guard_code.upper()
                 # Humble security codes are case-sensitive via API, but luckily it's all uppercase!
-                auth,login_json = perform_post(driver, HUMBLE_LOGIN_API, payload)
+                auth,login_json = do_login(driver,payload)
 
                 if (
                     "user_terms_opt_in_data" in login_json
@@ -297,7 +301,7 @@ def humble_login(driver):
             ):
                 code = input("Please enter 2FA code: ")
                 payload["code"] = code
-                auth,login_json = perform_post(driver,HUMBLE_LOGIN_API, payload)
+                auth,login_json = do_login(driver,payload)
             elif "errors" in login_json:
                 print("Unexpected login error detected.")
                 print(login_json["errors"])
