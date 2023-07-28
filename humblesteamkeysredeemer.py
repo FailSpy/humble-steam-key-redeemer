@@ -5,7 +5,7 @@ from fuzzywuzzy import fuzz
 import steam.webauth as wa
 import time
 import pickle
-import getpass
+from pwinput import pwinput
 import os
 import json
 import sys
@@ -15,6 +15,9 @@ from base64 import b64encode
 import atexit
 import signal
 from http.client import responses
+
+#patch steam webauth for password feedback
+wa.getpass = pwinput
 
 if __name__ == "__main__":
     sys.stderr = open('error.log','a')
@@ -258,7 +261,7 @@ def humble_login(driver):
     authorized = False
     while not authorized:
         username = input("Humble Email: ")
-        password = getpass.getpass("Password: ")
+        password = pwinput()
 
 
         payload = {
