@@ -345,7 +345,7 @@ def redeem_humble_key(sess, tpk):
     try:
         return respjson["key"]
     except:
-        return resp.text
+        return respjson
 
 
 def get_month_data(humble_session,month):
