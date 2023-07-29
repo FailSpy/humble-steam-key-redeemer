@@ -749,7 +749,7 @@ def export_mode(humble_session,order_details):
                 owned = tpk["steam_app_id"] in owned_app_details.keys()
                 if(not owned):
                     # Do a search to see if user owns it
-                    best_match = match_ownership(owned_app_details,tpk)
+                    best_match = match_ownership(owned_app_details,tpk,False)
                     owned = best_match[1] is not None and best_match[1] in owned_app_details.keys()
                 tpk["steam_ownership"] = owned
             
