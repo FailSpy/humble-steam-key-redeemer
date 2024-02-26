@@ -1,5 +1,5 @@
-steam>=1.2.0
 fuzzywuzzy>=0.17.0
 requests>=2.25.1
 selenium>=4.10.0
 pwinput>=1.0.3
+steam @ git+https://github.com/FailSpy/steam-py-lib@master # patched steam python library using changes from artur1214 until fixed on main repo
