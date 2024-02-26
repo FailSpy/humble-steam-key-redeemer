@@ -139,7 +139,7 @@ def process_quit(driver):
     signal.signal(signal.SIGINT,quit_on_exit)
 
 def get_headless_driver():
-    possibleDrivers = [(webdriver.Chrome,webdriver.ChromeOptions),(webdriver.Firefox,webdriver.FirefoxOptions)]
+    possibleDrivers = [(webdriver.Firefox,webdriver.FirefoxOptions),(webdriver.Chrome,webdriver.ChromeOptions)]
     driver = None
 
     exceptions = []
