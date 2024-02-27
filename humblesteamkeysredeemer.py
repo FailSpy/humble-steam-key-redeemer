@@ -102,53 +102,33 @@ var getHumbleOrderDetails = async (list) => {
 getHumbleOrderDetails(list).then(r => {done(r)});
 '''
 
-# taken from https://github.com/aprilahijriyan/selenium-fetch
-FETCH_JS_SCRIPT = """
-var url = arguments[0];
-var options = JSON.parse(arguments[1]);
-var callback = arguments[arguments.length - 1];
-async function dispatch() {
-    var data = null;
-    try {
-        const resp = await fetch(url, options);
-        var text = '';
-        data = {
-            'headers': Object.fromEntries(resp.headers.entries()),
-            'ok': resp.ok,
-            'status': {
-                'code': resp.status,
-                'text': resp.statusText,
-            },
-            'text': await resp.text(),
-        }
-        callback(data);
-    } catch (error) {
-        callback(error.toString());
-    }
-};
-dispatch();
-"""
+fetch_cmd = '''
+var done = arguments[arguments.length - 1];
+var formData = new FormData();
+const jsonData = JSON.parse(atob('{formData}'));
+
+for (const key in jsonData) {{
+    formData.append(key,jsonData[key])
+}}
+
+fetch("{url}", {{
+  "headers": {{
+    "csrf-prevention-token": "{csrf}"
+    }},
+  "body": formData,
+  "method": "POST",
+}}).then(r => {{ r.json().then( v=>{{done([r.status,v])}} ) }} );
+'''
 
 def perform_post(driver,url,payload):
-    options = {'method': 'POST'}
-    options['body'] = json.dumps(payload)
-    headers = {}
-
+    json_payload = b64encode(json.dumps(payload).encode('utf-8')).decode('ascii')
     csrf = driver.get_cookie('csrf_cookie')
     csrf = csrf['value'] if csrf is not None else ''
     if csrf is None:
         csrf = ''
-    else:
-        headers['csrf-prevention-token'] = csrf
+    script = fetch_cmd.format(formData=json_payload,url=url,csrf=csrf)
 
-    result = driver.execute_async_script(FETCH_JS_SCRIPT,url,json.dumps(options)) 
-    result_json = None
-    try:
-        result_json = json.loads(result['text'])
-    except Exception:
-        return result['status']['code'],result['text']
-
-    return result['status']['code'],result_json
+    return driver.execute_async_script(fetch_cmd.format(formData=json_payload,url=url,csrf=csrf))
 
 def process_quit(driver):
     def quit_on_exit(*args):
@@ -263,14 +243,12 @@ def verify_logins_session(session):
         return [session.execute_async_script(is_logged_in),False]
 
 def do_login(driver,payload):
-    auth,login_json = perform_post(driver,HUMBLE_LOGIN_API,payload)
-    if auth not in (200,401):
-        print(f"humblebundle.com has responded with an error (HTTP status code {auth}: {responses[auth]}).")
-        if auth == 403:
-            print("This error is likely from Cloudflare's anti-bot detection.")
-        time.sleep(30)
-        sys.exit()
-    return auth,login_json
+        auth,login_json = perform_post(driver,HUMBLE_LOGIN_API,payload)
+        if auth not in (200,401):
+            print(f"humblebundle.com has responded with an error (HTTP status code {auth}: {responses[auth]}).")
+            time.sleep(30)
+            sys.exit()
+        return auth,login_json
 
 def humble_login(driver):
     cls()
