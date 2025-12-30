@@ -24,6 +24,10 @@ For those subscribed to Humble Choice, this mode will find any Humble Monthly/Ch
 
 To remove an already added account, delete the associated `.(humble|steam)cookies` file.
 
+### Steam Web API key
+
+The script requires a Steam Web API key (create one at https://steamcommunity.com/dev/apikey). On first run it will look for `steam_api_key.txt` in the repo folder; if missing, you will be prompted to paste your key and it will be saved to that file for future runs.
+
 ### Dependencies
 
 Requires Python version 3.6 or above

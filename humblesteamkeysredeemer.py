@@ -12,6 +12,7 @@ import sys
 import webbrowser
 import os
 from base64 import b64encode
+from concurrent.futures import ThreadPoolExecutor
 import atexit
 import signal
 from http.client import responses
@@ -419,8 +420,25 @@ def _redeem_steam(session, key, quiet=False):
     if key == "":
         return 0
     session_id = session.cookies.get_dict()["sessionid"]
-    r = session.post(STEAM_REDEEM_API, data={"product_key": key, "sessionid": session_id})
-    blob = r.json()
+    r = session.post(
+        STEAM_REDEEM_API,
+        data={"product_key": key, "sessionid": session_id}
+    )
+    if r.status_code == 403:
+        if not quiet:
+            print(
+                "Steam responded with 403 Forbidden while redeeming. "
+                "This is likely session/cookie related. Please delete .steamcookies and try again; "
+                "if it persists, wait an hour and retry."
+            )
+        return 53
+    try:
+        blob = r.json()
+    except ValueError:
+        # Steam occasionally returns HTML or empty responses; treat as transient failure
+        body_preview = r.text[:200].replace("\n", " ")
+        print(f"Error: Steam redemption response was not JSON (status {r.status_code}). Body preview: {body_preview}")
+        return 53
 
     if blob["success"] == 1:
         for item in blob["purchase_receipt_info"]["line_items"]:
@@ -558,14 +576,143 @@ def prompt_yes_no(question):
         else:
             return True if ans == "y" else False
 
-def get_owned_apps(steam_session):
-    owned_content = steam_session.get(STEAM_USERDATA_API).json()
-    owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
-    owned_app_details = {
-        app["appid"]: app["name"]
-        for app in steam_session.get(STEAM_APP_LIST_API).json()["applist"]["apps"]
-        if app["appid"] in owned_app_ids
+
+def _load_steam_api_key(path="steam_api_key.txt"):
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                key = f.read().strip()
+                if key:
+                    return key
+        except OSError:
+            print(f"Warning: unable to read {path}; will prompt for Steam API key.")
+
+    while True:
+        key = input("Enter your Steam Web API key: ").strip()
+        if key:
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(key)
+            except OSError:
+                print(f"Warning: failed to save Steam API key to {path}; using it for this run only.")
+            return key
+
+        print("Steam API key cannot be empty. Please try again.")
+
+def _fetch_all_apps(steam_session):
+    # Steam limits app list responses; paginate until exhausted.
+    api_key = _load_steam_api_key()
+    url = "https://api.steampowered.com/IStoreService/GetAppList/v1/"
+    params = {
+        "key": api_key,
+        "max_results": 50000,
+        "last_appid": 0,
+        "include_dlc": True,
+        "include_software": True,
+        "include_hardware": True
     }
+
+    print("Fetching partial Steam app list... (this may take a few moments)")
+
+    apps = []
+    while True:
+        resp = steam_session.get(url, params=params)
+        if resp.status_code == 403:
+            print(
+                "Steam responded with 403 Forbidden while fetching the app list. "
+                "Please delete .steamcookies and try again. If the issue persists, wait an hour and retry."
+            )
+            sys.exit(1)
+
+        body = resp.json().get("response", {})
+        page = body.get("apps", [])
+        apps.extend(page)
+
+        if not body.get("have_more_results") or not page:
+            break
+
+        params["last_appid"] = body.get("last_appid", params.get("last_appid", 0))
+    
+    print(f"Fetched {len(apps)} total apps available on Steam Store.")
+
+    return apps
+
+
+def _fetch_missing_app_details(steam_session, app_ids):
+    if not app_ids:
+        return {}
+
+    def fetch_app(appid):
+        try:
+            resp = steam_session.get(
+                "https://store.steampowered.com/api/appdetails",
+                params={"appids": appid},
+            ).json()
+            app_data = resp.get(str(appid), {})
+            if app_data.get("success") and app_data.get("data"):
+                name = app_data["data"].get("name")
+                if name:
+                    return appid, name
+        except Exception:
+            return None
+        return None
+
+    with ThreadPoolExecutor(max_workers=max(1, min(8, len(app_ids)))) as executor:
+        results = list(executor.map(fetch_app, app_ids))
+
+    resolved = dict(result for result in results if result is not None)
+    unresolved = [appid for appid in app_ids if appid not in resolved]
+
+    if unresolved:
+        sample = ", ".join(str(appid) for appid in unresolved[:10])
+        more = f" ... (+{len(unresolved) - 10} more)" if len(unresolved) > 10 else ""
+        print(
+            f"Warning: Unable to fetch details for {len(unresolved)} owned apps (examples: {sample}{more})"
+        )
+        try:
+            with open("missing_app_ids.txt", "w", encoding="utf-8") as f:
+                for appid in unresolved:
+                    f.write(f"{appid}\n")
+        except OSError:
+            print("Warning: failed to write missing_app_ids.txt with unresolved app ids.")
+
+    return resolved
+
+
+def get_owned_apps(steam_session):
+    resp = steam_session.get(STEAM_USERDATA_API)
+    try:
+        owned_content = resp.json()
+    except ValueError:
+        preview = resp.text[:200].replace("\n", " ")
+        print(
+            f"Error: Steam user data response was not JSON (status {resp.status_code}). "
+            f"Body preview: {preview}"
+        )
+        return {}
+    owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
+    all_app_ids = _fetch_all_apps(steam_session)
+
+    # Index known apps from the catalog
+    app_index = {app["appid"]: app["name"] for app in all_app_ids}
+
+    # Fallback: the new catalog endpoint omits store-disabled apps, so look them up directly.
+    # Even with this, some apps may still be missing as Steam doesn't provide a full public catalog anymore and Humble may have ids for bundles/discontinued apps.
+    unindexed_app_ids = [
+        appid
+        for appid in owned_content.get("rgOwnedApps", [])
+        if appid not in app_index
+    ]
+
+    if unindexed_app_ids:
+        app_index.update(_fetch_missing_app_details(steam_session, unindexed_app_ids))
+
+    owned_app_details = {
+        appid: app_index[appid]
+        for appid in owned_content.get("rgOwnedApps", [])
+        if appid in app_index
+    }
+
     return owned_app_details
 
 def match_ownership(owned_app_details, game, filter_live):
@@ -703,7 +850,16 @@ def redeem_steam_keys(humble_session, humble_keys):
 def export_mode(humble_session,order_details):
     cls()
 
-    export_key_headers = ['human_name','redeemed_key_val','is_gift','key_type_human_name','is_expired','steam_ownership']
+    export_key_headers = [
+        'human_name',
+        'redeemed_key_val',
+        'is_gift',
+        'key_type_human_name',
+        'is_expired',
+        'steam_ownership',
+        'humble_steam_app_id',
+        'humble_expired_at'
+    ]
 
     steam_session = None
     reveal_unrevealed = False
@@ -752,6 +908,10 @@ def export_mode(humble_session,order_details):
                     best_match = match_ownership(owned_app_details,tpk,False)
                     owned = best_match[1] is not None and best_match[1] in owned_app_details.keys()
                 tpk["steam_ownership"] = owned
+
+            # Surface IDs and expiry information for auditing mismatches
+            tpk["humble_steam_app_id"] = tpk.get("steam_app_id")
+            tpk["humble_expired_at"] = tpk.get("expiry_date")
             
             keys.append(tpk)
     
