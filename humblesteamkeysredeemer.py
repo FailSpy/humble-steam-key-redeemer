@@ -40,7 +40,7 @@ HUMBLE_CHOOSE_CONTENT = "https://www.humblebundle.com/humbler/choosecontent"
 STEAM_KEYS_PAGE = "https://store.steampowered.com/account/registerkey"
 STEAM_USERDATA_API = "https://store.steampowered.com/dynamicstore/userdata/"
 STEAM_REDEEM_API = "https://store.steampowered.com/account/ajaxregisterkey/"
-STEAM_APP_LIST_API = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
+STEAM_STORE_ITEMS_API = "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/"
 
 # May actually be able to do without these, but for now they're in.
 headers = {
@@ -207,8 +207,19 @@ def try_recover_cookies(cookie_file, session):
             session.cookies.update(cookies)
         else:
             # handle WebDriver
+            added = 0
             for cookie in cookies:
-                session.add_cookie(cookie)
+                cookie = dict(cookie)
+                cookie.pop("sameSite", None)
+                try:
+                    session.add_cookie(cookie)
+                    added += 1
+                except Exception:
+                    # Skip cookies that don't apply to the current domain.
+                    continue
+            if added == 0:
+                return False
+            session.refresh()
         return True
     except Exception as e:
         return False
@@ -419,8 +430,17 @@ def _redeem_steam(session, key, quiet=False):
     if key == "":
         return 0
     session_id = session.cookies.get_dict()["sessionid"]
-    r = session.post(STEAM_REDEEM_API, data={"product_key": key, "sessionid": session_id})
-    blob = r.json()
+    blob = None
+    for attempt in range(5):
+        try:
+            r = session.post(STEAM_REDEEM_API, data={"product_key": key, "sessionid": session_id}, timeout=30)
+            blob = r.json()
+            break
+        except (requests.exceptions.RequestException, ValueError):
+            time.sleep(min(60, 5 * (attempt + 1)))
+    if blob is None:
+        # Treat repeated network failures like a rate limit so the caller backs off and retries.
+        blob = {"success": 0, "purchase_result_details": 53}
 
     if blob["success"] == 1:
         for item in blob["purchase_receipt_info"]["line_items"]:
@@ -558,19 +578,45 @@ def prompt_yes_no(question):
         else:
             return True if ans == "y" else False
 
+def get_app_names(steam_session, app_ids, batch_size=200):
+    # ISteamApps/GetAppList was retired, so look up names for owned apps only.
+    names = {}
+    app_ids = list(app_ids)
+    for i in range(0, len(app_ids), batch_size):
+        batch = app_ids[i:i + batch_size]
+        payload = {
+            "ids": [{"appid": appid} for appid in batch],
+            "context": {"language": "english", "country_code": "US"},
+        }
+        try:
+            resp = steam_session.get(STEAM_STORE_ITEMS_API, params={"input_json": json.dumps(payload)})
+            items = resp.json().get("response", {}).get("store_items", [])
+        except Exception:
+            items = []
+        for item in items:
+            if item.get("name") and item.get("appid"):
+                names[item["appid"]] = item["name"]
+    return names
+
 def get_owned_apps(steam_session):
     owned_content = steam_session.get(STEAM_USERDATA_API).json()
-    owned_app_ids = owned_content["rgOwnedPackages"] + owned_content["rgOwnedApps"]
-    owned_app_details = {
-        app["appid"]: app["name"]
-        for app in steam_session.get(STEAM_APP_LIST_API).json()["applist"]["apps"]
-        if app["appid"] in owned_app_ids
-    }
+    owned_app_ids = owned_content["rgOwnedApps"]
+    owned_app_details = get_app_names(steam_session, owned_app_ids)
+    print(f"Found {len(owned_app_details)} owned Steam apps for matching.")
     return owned_app_details
 
 def match_ownership(owned_app_details, game, filter_live):
     threshold = 70
     best_match = (0, None)
+    if not game.get("human_name"):
+        game["human_name"] = game.get("machine_name") or game.get("key_type_human_name") or str(game.get("steam_app_id") or "Unknown")
+    # Exact app id match beats fuzzy name matching.
+    try:
+        app_id = int(game.get("steam_app_id")) if game.get("steam_app_id") else None
+    except (TypeError, ValueError):
+        app_id = None
+    if app_id is not None and app_id in owned_app_details:
+        return (100, app_id)
     # Do a string search based on product names.
     matches = [
         (fuzz.token_set_ratio(appname, game["human_name"]), appid)
